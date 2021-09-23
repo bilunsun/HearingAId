@@ -66,7 +66,7 @@ class VanillaCNN(nn.Module):
 
     def forward(self, x):
         x = self.conv_blocks(x)
-        x = x.reshape(1, self.flattened_dims)
+        x = x.reshape(-1, self.flattened_dims)
         x = F.relu(self.fc1(x))
         x = self.fc2(x)
 

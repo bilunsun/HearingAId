@@ -6,8 +6,9 @@ from torch.utils.data import DataLoader, Dataset
 class AudioDataset(Dataset):
 
     def __init__(self, **kwargs):
-        self.x = torch.randn(1_000, 1, 64, 64)
-        self.y = torch.randint(low=0, high=6, size=(1_000, 1))
+        dataset_size = 10_000
+        self.x = torch.randn(dataset_size, 1, 64, 64)
+        self.y = torch.randint(low=0, high=6, size=(dataset_size, ))
 
     def __getitem__(self, idx):
         return self.x[idx], self.y[idx]
@@ -25,11 +26,11 @@ class AudioDataModule(pl.LightningDataModule):
         self.shuffle = shuffle
         self.num_workers = num_workers
 
-        self.train_set = AudioDataset(**kwargs)
-        self.val_set = AudioDataset(**kwargs)
+        self.train_dataset = AudioDataset(**kwargs)
+        self.val_dataset = AudioDataset(**kwargs)
 
     def train_dataloader(self) -> DataLoader:
-        return DataLoader(self.train_set, self.batch_size, shuffle=self.shuffle, num_workers=self.num_workers)
+        return DataLoader(self.train_dataset, self.batch_size, shuffle=self.shuffle, num_workers=self.num_workers)
 
     def val_dataloader(self) -> DataLoader:
-        return DataLoader(self.val_set, self.batch_size, shuffle=self.shuffle, num_workers=self.num_workers)
+        return DataLoader(self.val_dataset, self.batch_size, shuffle=False, num_workers=self.num_workers)
