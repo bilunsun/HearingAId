@@ -179,7 +179,7 @@ def main(args):
         every_n_val_epochs=1,
     )
 
-    callbacks = [checkpoint_callback] + [LearningRateMonitor] if configs["scheduler"] else []
+    callbacks = [checkpoint_callback] + [LearningRateMonitor()] if configs["scheduler"] else []
 
     trainer = pl.Trainer(
         gpus=1 if torch.cuda.is_available() else 0,
