@@ -107,6 +107,8 @@ class UrbanSound8KDataset(Dataset):
         else:
             return t_data
 
+    def __getitem__(self, idx):
+        return self.x[idx], self.y[idx]
 
 if __name__ == "__main__":
     """
