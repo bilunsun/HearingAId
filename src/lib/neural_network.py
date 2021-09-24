@@ -1,7 +1,7 @@
 import torch
 import torch.nn.functional as F
 from torch import nn
-from typing import List
+from typing import Tuple
 
 
 class VanillaCNN(nn.Module):
@@ -17,7 +17,7 @@ class VanillaCNN(nn.Module):
         width: int,
         height: int,
         in_channels: int = 1,
-        hidden_channels: List[int] = [16, 32, 64, 128],
+        hidden_channels: Tuple[int] = (16, 32, 64, 128),
         fc_hidden_dims: int = 128,
         n_classes: int = 6,
     ):
@@ -75,8 +75,8 @@ class VanillaCNN(nn.Module):
 
 if __name__ == "__main__":
     # Testing only
-    width = 128
-    height = 64
+    width = 64
+    height = 44
 
     model = VanillaCNN(width, height)
     x = torch.randn(1, 1, width, height)

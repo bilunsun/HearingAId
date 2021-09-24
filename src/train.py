@@ -4,6 +4,7 @@ import torch
 import torch.nn.functional as F
 from pytorch_lightning.callbacks import LearningRateMonitor, ModelCheckpoint
 from pytorch_lightning.loggers import WandbLogger
+import wandb
 
 from lib import AudioDataModule, VanillaCNN
 
@@ -18,7 +19,8 @@ class Model(pl.LightningModule):
         parser = argparse.ArgumentParser(parents=[parent_parser], add_help=False)
 
         parser.add_argument("--width", type=int, default=64)
-        parser.add_argument("--height", type=int, default=64)
+        parser.add_argument("--height", type=int, default=44)
+        parser.add_argument("--n_classes", type=int, default=10)
 
         parser.add_argument("--lr", type=float, default=3e-4)
         parser.add_argument("--scheduler", type=str, choices=[None, "cosine", "plateau"], default=None)
@@ -34,7 +36,7 @@ class Model(pl.LightningModule):
 
         self.save_hyperparameters()
 
-        self.model = VanillaCNN(self.hparams.width, self.hparams.height)
+        self.model = VanillaCNN(width=self.hparams.width, height=self.hparams.height, n_classes=self.hparams.n_classes)
 
         self.optimizer = torch.optim.Adam(self.model.parameters(), lr=self.hparams.lr)
 
@@ -52,6 +54,10 @@ class Model(pl.LightningModule):
                 min_lr=self.hparams.min_lr,
                 cooldown=self.hparams.plateau_cooldown,
             )
+
+        # For confusion matrix
+        self._y_hat = []
+        self._y = []
 
     def forward(self, x):
         return self.model(x)
@@ -71,10 +77,25 @@ class Model(pl.LightningModule):
         return loss
 
     def training_step(self, batch, _):
-        return self._single_step(batch, mode="train")
+        x, y = batch
+
+        pred = self(x)
+        loss = F.cross_entropy(pred, y)
+        self.log(f"train_loss", loss, prog_bar=True, logger=True)
+
+        return loss
 
     def validation_step(self, batch, _):
-        self._single_step(batch, mode="val")
+        x, y = batch
+
+        pred = self(x)
+        loss = F.cross_entropy(pred, y)
+        self.log(f"val_loss", loss, prog_bar=True, logger=True)
+
+        y_hat = torch.argmax(pred, dim=1)
+
+        self._y_hat.append(y_hat)
+        self._y.append(y)
 
     def configure_optimizers(self):
         if self.scheduler is None:
@@ -84,13 +105,41 @@ class Model(pl.LightningModule):
         return [self.optimizer], [scheduler_dict]
 
     def on_fit_start(self):
+        self.class_names = self.trainer.datamodule.class_names
+
         self.logger.log_hyperparams(
             {
                 "flattened_dims": getattr(self.model, "flattened_dims", -1),
                 "train_set_size": len(self.trainer.datamodule.train_dataset),
                 "val_set_size": len(self.trainer.datamodule.val_dataset),
+                "class_names": self.class_names,
             }
         )
+
+    def on_validation_epoch_end(self, *args) -> None:
+        """
+        Used to plot the confusion matrix
+        """
+        y = torch.cat(self._y).cpu().numpy()
+        y_hat = torch.cat(self._y_hat).cpu().numpy()
+
+        accuracy = (y == y_hat).mean()  # Need to cast Long tensor to Float
+        self.log("val_accuracy", accuracy, prog_bar=True, logger=True)
+
+        # import pdb; pdb.set_trace()
+        self.logger.experiment.log(
+            {
+                "Confusion Matrix": wandb.plot.confusion_matrix(
+                    y_true=y,
+                    preds=y_hat,
+                    class_names=self.class_names,
+                )
+            }
+        )
+
+        # Reset
+        self._y = []
+        self._y_hat = []
 
 
 class WandbModelCheckpoint(ModelCheckpoint):
@@ -109,8 +158,11 @@ def main(args):
     seed = pl.seed_everything(configs["seed"])
     configs["seed"] = seed
 
-    model = Model(**configs)
     audio_datamodule = AudioDataModule(**configs)
+    configs["width"] = audio_datamodule.width
+    configs["height"] = audio_datamodule.height
+    configs["n_classes"] = audio_datamodule.n_classes
+    model = Model(**configs)
 
     print("Model hparams")
     print(model.hparams)
