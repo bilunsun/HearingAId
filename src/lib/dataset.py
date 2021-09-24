@@ -1,87 +1,131 @@
 import csv
 import os
-from pathlib import Path
-
-import torchaudio.transforms
+import pytorch_lightning as pl
 import torch
-from torch.utils.data import Dataset
-from torch.utils.data.dataset import T_co
+import torchaudio.transforms
+
+from pathlib import Path
+from torch.utils.data import random_split, Dataset
+from tqdm.auto import tqdm
+
+
+import math
+import random
+
+
+class DataLoader:
+    def __init__(self, dataset, batch_size, shuffle, **kwargs):
+        self.dataset = dataset
+        self.batch_size = batch_size
+        self.shuffle = shuffle
+        self.it = list(range(math.ceil(len(self.dataset) / self.batch_size)))
+
+    def __len__(self):
+        return len(self.it)
+
+    def __iter__(self):
+        it = self.it[:]
+
+        if self.shuffle:
+            random.shuffle(it)
+
+        for i in it:
+            yield self.dataset[i * self.batch_size : (i + 1) * self.batch_size]
 
 
 class UrbanSound8KDataset(Dataset):
-    def __init__(self,
-                 root: str = '../../UrbanSound8K',
-                 transformation: torchaudio.transforms.MelSpectrogram = None,
-                 target_sample_rate: int = 22050,
-                 n_samples: int = 22050,
-                 device: str = 'cpu',
-                 should_ignore_cache=True,
-                 should_make_cache=False):
+    CLASS_ID_TO_NAME = [
+        "air_conditioner",
+        "car_horn",
+        "children_playing",
+        "dog_bark",
+        "drilling",
+        "engine_idling",
+        "gun_shot",
+        "jackhammer",
+        "siren",
+        "street_music",
+    ]
+
+    NAME_TO_CLASS_ID = {name: i for i, name in enumerate(CLASS_ID_TO_NAME)}
+
+    def __init__(
+        self,
+        root: str = os.path.join("data", "UrbanSound8K"),
+        transformation: torchaudio.transforms.MelSpectrogram = None,
+        target_sample_rate: int = 22050,
+        n_samples: int = 22050,
+    ):
 
         if os.path.isdir(root):
             # assume user has passed a valid dataset to us
             self.root = root
         else:
-            raise OSError(f'{root} is not a valid folder.')
-
-        # open metadata CSV file with Pandas
-        # self.metadata = pd.read_csv(f'{self.root}/metadata/UrbanSound8K.csv')
-        with open(f'{self.root}/metadata/UrbanSound8K.csv', 'r', newline='') as f:
-            reader = csv.reader(f)
-            self.metadata = list(reader)[1:]
-
-        if transformation is None:
-            self.transformation = torchaudio.transforms.MelSpectrogram(
-                sample_rate=target_sample_rate,
-                n_fft=1024,
-                hop_length=512,
-                n_mels=64
-            )
-        else:
-            self.transformation = transformation
+            raise OSError(f"{root} is not a valid folder.")
 
         self.target_sample_rate = target_sample_rate
         self.n_samples = n_samples
-        self.device = device
-        self.should_ignore_cache = should_ignore_cache
-        self.should_make_cache = should_make_cache
 
-        if self.should_make_cache:
-            # make directory for transforms to save them for later use
-            self.tensor_cache_dir = f'{self.root}/tensor_cache'
-            if not os.path.isdir(self.tensor_cache_dir):
-                os.mkdir(self.tensor_cache_dir)
-        else:
-            self.tensor_cache_dir = ''
+        self.transformation = transformation or torchaudio.transforms.MelSpectrogram(
+            sample_rate=target_sample_rate, n_fft=1024, hop_length=512, n_mels=64
+        )
 
-    def __getitem__(self, index) -> T_co:
-        item_meta = self.metadata[index]
+        # Open the metadata file
+        with open(os.path.join(self.root, "metadata", "UrbanSound8K.csv"), "r", newline="") as f:
+            reader = csv.reader(f)
+            metadata = list(reader)[1:]
 
-        filename = item_meta[0]
-        label = item_meta[7]
-        foldnum = item_meta[5]
+        # Get the full file_paths, and labels
+        file_paths = [os.path.join(self.root, "audio", f"fold{m[5]}", m[0]) for m in metadata]
+        labels = [m[7] for m in metadata]
 
-        # Check for tensor cache
-        tensor_cache_path = f'{self.tensor_cache_dir}/{filename}.pt'
-        if not self.should_ignore_cache and os.path.isfile(tensor_cache_path):
-            t_data = torch.load(tensor_cache_path)
-        else:
-            wav, sr = torchaudio.load(f'{self.root}/audio/fold{foldnum}/{filename}')
+        # Make directory for transforms to save them for later use
+        self.tensor_cache_dir = os.path.join(self.root, "tensor_cache")
+        if not os.path.isdir(self.tensor_cache_dir):
+            os.mkdir(self.tensor_cache_dir)
+            self.preprocess(file_paths, labels)
+        elif not os.listdir(self.tensor_cache_dir):
+            self.preprocess(file_paths, labels)
 
-            t_data = wav.to(self.device)
-            t_data = self._resample(t_data, self.target_sample_rate)
+        # Load the dataset into memory
+        print("Loading dataset into memory...")
+        signals = []
+        class_ids = []
+        for filename in tqdm(os.listdir(self.tensor_cache_dir)):
+            class_id = int(filename.split("__")[0])
+            signal = torch.load(os.path.join(self.tensor_cache_dir, filename))
+
+            signals.append(signal)
+            class_ids.append(class_id)
+        print("Done loading dataset into memory...")
+
+        self.signals = torch.cat(signals).unsqueeze(1)  # Need an extra dim for channels
+        self.class_ids = torch.LongTensor(class_ids)
+
+    def preprocess(self, file_paths, labels):
+        print("Preprocessing...")
+
+        for filename, label in tqdm(zip(file_paths, labels), total=len(labels)):
+            wav, _ = torchaudio.load(filename)
+
+            t_data = self._resample(wav, self.target_sample_rate)
             t_data = self._mix_down(t_data)
             t_data = self._fix_length(t_data)
             t_data = self.transformation(t_data)
 
-            if self.should_make_cache:
-                # Save the tensor for later
-                torch.save(t_data, Path(tensor_cache_path))
+            # Save the tensor in the cache directory
+            basename = os.path.basename(filename)
+            class_id = self.NAME_TO_CLASS_ID[label]
+            cache_path = os.path.join(self.tensor_cache_dir, f"{class_id}__{basename}.pt")
+            torch.save(t_data, Path(cache_path))
 
-        return t_data, label
+        print("Done preprocessing.")
+
+    def __getitem__(self, index):
+        return self.signals[index], self.class_ids[index]
 
     def __len__(self):
-        return len(self.metadata)
+        return len(self.class_ids)
 
     def _resample(self, t_data, sample_rate):
         if sample_rate != self.target_sample_rate:
@@ -93,7 +137,7 @@ class UrbanSound8KDataset(Dataset):
     def _fix_length(self, t_data):
         len_data = t_data.shape[1]
         if len_data > self.n_samples:
-            return t_data[:, :self.n_samples]
+            return t_data[:, : self.n_samples]
         elif len_data < self.n_samples:
             len_missing = self.n_samples - len_data
             return torch.nn.functional.pad(t_data, (0, len_missing))
@@ -107,22 +151,41 @@ class UrbanSound8KDataset(Dataset):
         else:
             return t_data
 
-    def __getitem__(self, idx):
-        return self.x[idx], self.y[idx]
+    @property
+    def n_classes(self) -> int:
+        return len(self.CLASS_ID_TO_NAME)
 
-if __name__ == "__main__":
-    """
-    Random benchmarking stuff here.
-    """
-    import time
-    import random
+    @property
+    def class_names(self):
+        return self.CLASS_ID_TO_NAME
 
-    dataset = UrbanSound8KDataset(should_make_cache=True, should_ignore_cache=False)
-    indices = random.sample(range(0, len(dataset)), len(dataset))
 
-    t0 = time.time()
-    for i in indices:
-        data, lbl = dataset[i]
-    t1 = time.time()
+class AudioDataModule(pl.LightningDataModule):
+    def __init__(self, batch_size: int, shuffle: bool, num_workers: int, **kwargs):
+        super().__init__()
 
-    print(f'Total time: {t1 - t0}')
+        self.batch_size = batch_size
+        self.shuffle = shuffle
+        self.num_workers = num_workers
+
+        dataset = UrbanSound8KDataset()
+        print(f"There are {len(dataset)} samples in the dataset.")
+        signal, _ = dataset[1]
+
+        self.width = signal.size(-2)
+        self.height = signal.size(-1)
+
+        self.n_classes = dataset.n_classes
+        self.class_names = dataset.class_names
+        print("N classes", self.n_classes)
+
+        train_len = int(len(dataset) * 0.95)
+        val_len = len(dataset) - train_len
+        self.train_dataset, self.val_dataset = random_split(dataset, [train_len, val_len])
+        print("OK")
+
+    def train_dataloader(self) -> DataLoader:
+        return DataLoader(self.train_dataset, self.batch_size, shuffle=self.shuffle, num_workers=self.num_workers)
+
+    def val_dataloader(self) -> DataLoader:
+        return DataLoader(self.val_dataset, self.batch_size, shuffle=False, num_workers=self.num_workers)
