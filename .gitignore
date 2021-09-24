@@ -1,5 +1,7 @@
 # Custom
 data/
+wandb/
+TEST-*/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
