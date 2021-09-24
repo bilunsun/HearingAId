@@ -174,8 +174,8 @@ def main(args):
         dirpath=configs["checkpoints_dir"],
         filename=logger.experiment.name,
         save_top_k=1,
-        monitor="val_loss",
-        mode="min",
+        monitor="val_accuracy",
+        mode="max",
         every_n_val_epochs=1,
     )
 
