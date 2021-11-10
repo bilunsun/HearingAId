@@ -67,6 +67,6 @@ python3 setup.py bdist_wheel
 # Install wheel (enable virtual env that will use it first)
 cd ~/HearingAId
 source venv/bin/activate
-pip3 install ~/pytorch/torch-1.10.*.whl
+pip3 install ~/pytorch/dist/torch-1.10.0a0+git36449ea-cp39-cp39-linux_aarch64.whl
 
 ```
