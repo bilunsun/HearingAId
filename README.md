@@ -16,7 +16,7 @@ pipwin install pyaudio
 Primary challenge encountered is the installation of Pytorch.
 To install Pytorch, I built it from the pytorch repo, because the architecture of the Pi 4 is `aarch64`, and there are no available wheels for this architecture from pip.
 
-To install PyTorch from scratch, you will need a minimum of 5.5 GB of RAM (swap + real memory) with the settings below. If parts of the build fail, try reducing the number of jobs to 1 or 2.
+To install PyTorch from scratch, you will need a minimum of 5.5 GB of RAM (swap + real memory) with the settings below. If parts of the build fail, try reducing the number of jobs to 1 or 2. Ensure that you are also running a version of Python that will be compatible with the other packages - 3.8 is the latest recommended version. 3.9 and 3.10 may have compatibility issues with certain packages that we will use.
 
 ```
 # The usual sudo update and upgrade
