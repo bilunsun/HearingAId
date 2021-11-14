@@ -138,3 +138,7 @@ dmypy.json
 
 # Datasets
 UrbanSound8K/
+
+# Sublime Text
+*.sublime-project
+*.sublime-workspace
