@@ -11,10 +11,6 @@ import statistics
 import shutil
 
 
-WIDTH = 64
-HEIGHT = 44
-
-
 def main(args: argparse.ArgumentParser):
     configs = vars(args)
 
@@ -23,9 +19,11 @@ def main(args: argparse.ArgumentParser):
     configs["seed"] = seed
 
     ds = dataset.UrbanSound8KDataset()
+    width = ds[0][0].size(-2)
+    height = ds[0][0].size(-1)
 
-    configs["width"] = ds[0][0].size(-2)
-    configs["height"] = ds[0][0].size(-1)
+    configs["width"] = width
+    configs["height"] = height
     configs["n_classes"] = ds.n_classes
 
     model = Model(**configs)
@@ -35,7 +33,7 @@ def main(args: argparse.ArgumentParser):
     print('\nStarting benchmark...')
 
     for it, i in enumerate(random.sample(range(len(ds)), args.times)):
-        sample = torch.reshape(ds[i][0], (1, 1, WIDTH, HEIGHT))
+        sample = torch.reshape(ds[i][0], (1, 1, width, height))
 
         # time inference section
         start_time = time.time()
@@ -46,12 +44,14 @@ def main(args: argparse.ArgumentParser):
 
         printProgressBar(it+1, args.times)
 
-    print(f'Ran {args.times} samples.\n\tAverage: {statistics.mean(infer_times)}' +
+    print(f'Ran {args.times} samples.' +
+          f'\n\tAverage: {statistics.mean(infer_times)}' +
           f'\n\tStandard Deviation: {statistics.stdev(infer_times)}' +
           f'\n\tMax: {max(infer_times)}')
 
 
-def printProgressBar(iteration, total, prefix='', suffix='', fill='█', barfill=' ', printEnd="\r"):
+def printProgressBar(iteration, total, prefix='', suffix='', fill='█',
+                     barfill=' ', printEnd="\r"):
     w, h = shutil.get_terminal_size()
     length = w - 9 - len(str(total)) * 2
 
