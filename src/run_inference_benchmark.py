@@ -8,6 +8,7 @@ import argparse
 import random
 import time
 import statistics
+import shutil
 
 
 WIDTH = 64
@@ -31,12 +32,10 @@ def main(args: argparse.ArgumentParser):
 
     infer_times = []
 
-    print('\nStarting benchmark...\n')
+    print('\nStarting benchmark...')
 
-    for i in random.sample(range(len(ds)), args.times):
+    for it, i in enumerate(random.sample(range(len(ds)), args.times)):
         sample = torch.reshape(ds[i][0], (1, 1, WIDTH, HEIGHT))
-        # import pdb
-        # pdb.set_trace()
 
         # time inference section
         start_time = time.time()
@@ -45,9 +44,26 @@ def main(args: argparse.ArgumentParser):
 
         infer_times.append(elapsed_time)
 
+        printProgressBar(it+1, args.times)
+
     print(f'Ran {args.times} samples.\n\tAverage: {statistics.mean(infer_times)}' +
           f'\n\tStandard Deviation: {statistics.stdev(infer_times)}' +
           f'\n\tMax: {max(infer_times)}')
+
+
+def printProgressBar(iteration, total, prefix='', suffix='', fill='█', barfill=' ', printEnd="\r"):
+    w, h = shutil.get_terminal_size()
+    length = w - 9 - len(str(total)) * 2
+
+    percent = f'{int(100 * (iteration / total)) : >3}'
+    filledLength = int(length * iteration // total)
+
+    bar = fill * filledLength + barfill * (length - filledLength)
+
+    print(f'\r{percent}%|{bar}| {iteration}/{total}', end=printEnd)
+
+    if iteration == total:
+        print()
 
 
 if __name__ == '__main__':
