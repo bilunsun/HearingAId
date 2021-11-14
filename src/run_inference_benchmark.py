@@ -31,6 +31,8 @@ def main(args: argparse.ArgumentParser):
 
     infer_times = []
 
+    print('\nStarting benchmark...\n')
+
     for i in random.sample(range(len(ds)), args.times):
         sample = torch.reshape(ds[i][0], (1, 1, WIDTH, HEIGHT))
         # import pdb
