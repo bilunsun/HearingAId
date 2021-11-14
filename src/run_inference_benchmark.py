@@ -1,5 +1,5 @@
 from train import Model
-from lib import dataset, AudioDataModule
+from lib import dataset
 
 import pytorch_lightning as pl
 import torch
@@ -21,13 +21,13 @@ def main(args: argparse.ArgumentParser):
     seed = pl.seed_everything(configs["seed"])
     configs["seed"] = seed
 
-    audio_datamodule = AudioDataModule(**configs)
-    configs["width"] = audio_datamodule.width
-    configs["height"] = audio_datamodule.height
-    configs["n_classes"] = audio_datamodule.n_classes
+    ds = dataset.UrbanSound8KDataset()
+
+    configs["width"] = ds[0][0].size(-2)
+    configs["height"] = ds[0][0].size(-1)
+    configs["n_classes"] = ds.n_classes
 
     model = Model(**configs)
-    ds = dataset.UrbanSound8KDataset()
 
     infer_times = []
 
