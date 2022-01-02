@@ -1,2 +1,2 @@
 from .dataset import AudioDataModule
-from .neural_network import VanillaCNN
+from .neural_network import MobileNetV3Backbone, VanillaCNN

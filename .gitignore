@@ -2,6 +2,7 @@
 data/
 wandb/
 TEST-*/
+checkpoints/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
@@ -131,3 +132,13 @@ dmypy.json
 
 # Pyre type checker
 .pyre/
+
+# PyCharm
+.idea/
+
+# Datasets
+UrbanSound8K/
+
+# Sublime Text
+*.sublime-project
+*.sublime-workspace

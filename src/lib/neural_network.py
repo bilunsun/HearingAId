@@ -1,6 +1,7 @@
 import torch
 import torch.nn.functional as F
 from torch import nn
+from torchvision import models
 from typing import Tuple
 
 
@@ -17,9 +18,9 @@ class VanillaCNN(nn.Module):
         width: int,
         height: int,
         in_channels: int = 1,
-        hidden_channels: Tuple[int] = (16, 32, 64, 128),
-        fc_hidden_dims: int = 128,
-        n_classes: int = 6,
+        hidden_channels: Tuple[int] = (16, 32, 64, 128, 256),
+        fc_hidden_dims: int = 256,
+        n_classes: int = 10,
     ):
         super().__init__()
 
@@ -34,6 +35,7 @@ class VanillaCNN(nn.Module):
 
         self.flattened_dims = self._get_flattened_dims(self.width, self.height, self.in_channels)
         self.fc1 = nn.Linear(self.flattened_dims, fc_hidden_dims)
+        self.dropout = nn.Dropout(p=0.3)
         self.fc2 = nn.Linear(fc_hidden_dims, n_classes)
 
     def _conv_block(
@@ -68,9 +70,38 @@ class VanillaCNN(nn.Module):
         x = self.conv_blocks(x)
         x = x.reshape(-1, self.flattened_dims)
         x = F.relu(self.fc1(x))
+        x = self.dropout(x)
         x = self.fc2(x)
 
         return x
+
+
+class MobileNetV3Backbone(nn.Module):
+    def __init__(self, n_classes: int):
+        super().__init__()
+
+        self.n_classes = n_classes
+
+        self.backbone = models.mobilenet_v3_small(pretrained=True)
+
+        # Freeze the backbone
+        for p in self.backbone.parameters():
+            p.requires_grad = False
+
+        # Transfer learning with only the last few blocks/layers
+        self.backbone.features[-2].requires_grad = True
+        self.backbone.features[-1].requires_grad = True
+        self.backbone.classifier.requires_grad = True
+
+        self.backbone.classifier[-1] = nn.Linear(in_features=1024, out_features=self.n_classes)
+
+    def forward(self, x):
+        # Hacky reshaping and scaling
+        x = F.interpolate(x, size=(244, 244))
+        x = x.repeat(1, 3, 1, 1)
+        x = (x - 30) / 300
+
+        return self.backbone(x)
 
 
 if __name__ == "__main__":

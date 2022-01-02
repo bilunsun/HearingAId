@@ -2,11 +2,12 @@ import argparse
 import pytorch_lightning as pl
 import torch
 import torch.nn.functional as F
+import wandb
 from pytorch_lightning.callbacks import LearningRateMonitor, ModelCheckpoint
 from pytorch_lightning.loggers import WandbLogger
-import wandb
+from torchvision import models
 
-from lib import AudioDataModule, VanillaCNN
+from lib import AudioDataModule, VanillaCNN, MobileNetV3Backbone
 
 
 class Model(pl.LightningModule):
@@ -36,7 +37,8 @@ class Model(pl.LightningModule):
 
         self.save_hyperparameters()
 
-        self.model = VanillaCNN(width=self.hparams.width, height=self.hparams.height, n_classes=self.hparams.n_classes)
+        self.model = MobileNetV3Backbone(n_classes=self.hparams.n_classes)
+        # self.model = VanillaCNN(width=self.hparams.width, height=self.hparams.height, n_classes=self.hparams.n_classes)
 
         self.optimizer = torch.optim.Adam(self.model.parameters(), lr=self.hparams.lr)
 
