@@ -4,6 +4,11 @@ wandb/
 TEST-*/
 checkpoints/
 
+# Custom - device
+soundassist
+device/*.d
+device/*.o
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
