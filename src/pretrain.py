@@ -6,39 +6,8 @@ import wandb
 from pytorch_lightning.callbacks import LearningRateMonitor, ModelCheckpoint
 from pytorch_lightning.loggers import WandbLogger
 from torchvision import models
-from torch import nn
 
 from lib import AudioDataModule, VanillaCNN, MobileNetV3Backbone, convnext_tiny
-
-
-class Scaler(nn.Module):
-    '''Basic standard scaler class'''
-
-    def __init__(self, size: int):
-        super().__init__()
-
-        self.register_buffer("mean", torch.zeros(size))
-        self.register_buffer("std", torch.ones(size))
-        self.device = torch.device("cpu")
-
-    def fit(self, x):
-        # Weird reshape to handle extra dimensions
-        self.mean = torch.mean(x.reshape(-1, x.size(-1)), dim=0)
-        self.std = torch.std(x.reshape(-1, x.size(-1)), dim=0)
-
-    def transform(self, x):
-        return (x - self.mean) / self.std
-
-    def inverse_transform(self, x):
-        return x * self.std + self.mean
-
-    def to(self, device):
-        self.mean = self.mean.to(device)
-        self.std = self.std.to(device)
-        self.device = device
-
-    def __repr__(self):
-        return f'mean: {self.mean}\tstd: {self.std}'
 
 
 class Model(pl.LightningModule):
@@ -50,8 +19,8 @@ class Model(pl.LightningModule):
     def add_model_specific_args(parent_parser):
         parser = argparse.ArgumentParser(parents=[parent_parser], add_help=False)
 
-        parser.add_argument("--width", type=int, default=128)
-        parser.add_argument("--height", type=int, default=87)
+        parser.add_argument("--width", type=int, default=64)
+        parser.add_argument("--height", type=int, default=44)
         parser.add_argument("--n_classes", type=int, default=10)
 
         parser.add_argument("--lr", type=float, default=3e-4)
@@ -70,7 +39,7 @@ class Model(pl.LightningModule):
         self.save_hyperparameters()
 
         # self.model = MobileNetV3Backbone(n_classes=self.hparams.n_classes)
-        self.model = convnext_tiny(in_chans=1, num_classes=self.hparams.n_classes)
+        self.model = convnext_tiny(in_chans=1, num_classes=10)
         # self.model = VanillaCNN(width=self.hparams.width, height=self.hparams.height, n_classes=self.hparams.n_classes)
 
         if self.hparams.load_weights_from_ckpt:
@@ -93,8 +62,6 @@ class Model(pl.LightningModule):
                 cooldown=self.hparams.plateau_cooldown,
             )
 
-        self.scaler = Scaler(self.hparams.height)
-
         # For confusion matrix
         self._y_hat = []
         self._y = []
@@ -104,8 +71,6 @@ class Model(pl.LightningModule):
 
     def training_step(self, batch, _):
         x, y = batch
-        # x = (x - 17.2) / 252
-        x = self.scaler.transform(x)
 
         pred = self(x)
         loss = F.cross_entropy(pred, y)
@@ -115,8 +80,6 @@ class Model(pl.LightningModule):
 
     def validation_step(self, batch, _):
         x, y = batch
-        # x = (x - 17.2) / 252
-        x = self.scaler.transform(x)
 
         pred = self(x)
         loss = F.cross_entropy(pred, y)
@@ -137,10 +100,6 @@ class Model(pl.LightningModule):
         return [self.optimizer], [scheduler_dict]
 
     def on_fit_start(self):
-        dataset = self.trainer.datamodule.train_dataset[:][0]
-        self.scaler.fit(dataset)
-        self.scaler.to("cuda")
-
         self.class_names = self.trainer.datamodule.class_names
 
         self.logger.log_hyperparams(

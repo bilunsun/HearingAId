@@ -66,9 +66,7 @@ class UrbanSound8KDataset(Dataset):
         self.target_sample_rate = target_sample_rate
         self.n_samples = n_samples
 
-        self.transformation = transformation or torchaudio.transforms.MelSpectrogram(
-            sample_rate=target_sample_rate, n_fft=1024, hop_length=512, n_mels=64
-        )
+        self.transformation = transformation or torchaudio.transforms.MelSpectrogram(sample_rate=target_sample_rate, n_fft=1024, hop_length=256, n_mels=128)
 
         # Open the metadata file
         with open(os.path.join(self.root, "metadata", "UrbanSound8K.csv"), "r", newline="") as f:
@@ -110,14 +108,16 @@ class UrbanSound8KDataset(Dataset):
 
             t_data = self._resample(wav, self.target_sample_rate)
             t_data = self._mix_down(t_data)
-            t_data = self._fix_length(t_data)
-            t_data = self.transformation(t_data)
+            t_data_list = self._fix_length(t_data)
+            t_data_list = [self.transformation(t_data) for t_data in t_data_list]
 
             # Save the tensor in the cache directory
             basename = os.path.basename(filename)
             class_id = self.NAME_TO_CLASS_ID[label]
-            cache_path = os.path.join(self.tensor_cache_dir, f"{class_id}__{basename}.pt")
-            torch.save(t_data, Path(cache_path))
+
+            for i, t_data in enumerate(t_data_list):
+                cache_path = os.path.join(self.tensor_cache_dir, f"{class_id}__{basename}_{i}.pt")
+                torch.save(t_data, Path(cache_path))
 
         print("Done preprocessing.")
 
@@ -137,12 +137,13 @@ class UrbanSound8KDataset(Dataset):
     def _fix_length(self, t_data):
         len_data = t_data.shape[1]
         if len_data > self.n_samples:
-            return t_data[:, : self.n_samples]
+            t_data_list = [t_data[:, i:i+self.n_samples] for i in range(len_data // self.n_samples)]
+            return t_data_list
         elif len_data < self.n_samples:
             len_missing = self.n_samples - len_data
-            return torch.nn.functional.pad(t_data, (0, len_missing))
+            return [torch.nn.functional.pad(t_data, (0, len_missing))]
         else:
-            return t_data
+            return [t_data]
 
     @staticmethod
     def _mix_down(t_data):
@@ -179,7 +180,7 @@ class AudioDataModule(pl.LightningDataModule):
         self.class_names = dataset.class_names
         print("N classes", self.n_classes)
 
-        train_len = int(len(dataset) * 0.95)
+        train_len = int(len(dataset) * 0.8)
         val_len = len(dataset) - train_len
         self.train_dataset, self.val_dataset = random_split(dataset, [train_len, val_len])
         print("OK")
