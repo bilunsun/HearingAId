@@ -6,38 +6,8 @@ import wandb
 from pytorch_lightning.callbacks import LearningRateMonitor, ModelCheckpoint
 from pytorch_lightning.loggers import WandbLogger
 from torchvision import models
-from torch import nn
 
 from lib import AudioDataModule, VanillaCNN, MobileNetV3Backbone, convnext_tiny
-
-
-class Scaler(nn.Module):
-    '''Basic log scaler class'''
-
-    def __init__(self, size: int):
-        super().__init__()
-
-        self.register_buffer("mean", torch.zeros(size))
-        self.register_buffer("std", torch.ones(size))
-        self.device = torch.device("cpu")
-
-    def fit(self, x):
-        x = torch.clip(x, min=1e-8)
-        x = torch.log10(x).flatten()
-        self.mean = torch.mean(x, dim=0)
-        self.std = torch.std(x, dim=0)
-
-    def transform(self, x):
-        x = torch.clip(x, min=1e-8)
-        return (torch.log10(x) - self.mean) / self.std
-
-    def to(self, device):
-        self.mean = self.mean.to(device)
-        self.std = self.std.to(device)
-        self.device = device
-
-    def __repr__(self):
-        return f'mean: {self.mean}\tstd: {self.std}'
 
 
 class Model(pl.LightningModule):
@@ -49,8 +19,8 @@ class Model(pl.LightningModule):
     def add_model_specific_args(parent_parser):
         parser = argparse.ArgumentParser(parents=[parent_parser], add_help=False)
 
-        parser.add_argument("--width", type=int, default=128)
-        parser.add_argument("--height", type=int, default=87)
+        parser.add_argument("--width", type=int, default=64)
+        parser.add_argument("--height", type=int, default=44)
         parser.add_argument("--n_classes", type=int, default=10)
 
         parser.add_argument("--lr", type=float, default=3e-4)
@@ -69,7 +39,7 @@ class Model(pl.LightningModule):
         self.save_hyperparameters()
 
         # self.model = MobileNetV3Backbone(n_classes=self.hparams.n_classes)
-        self.model = convnext_tiny(in_chans=1, num_classes=self.hparams.n_classes)
+        self.model = convnext_tiny(in_chans=1, num_classes=10)
         # self.model = VanillaCNN(width=self.hparams.width, height=self.hparams.height, n_classes=self.hparams.n_classes)
 
         if self.hparams.load_weights_from_ckpt:
@@ -92,9 +62,6 @@ class Model(pl.LightningModule):
                 cooldown=self.hparams.plateau_cooldown,
             )
 
-        # self.scaler = Scaler((1, self.hparams.height, self.hparams.width))
-        self.scaler = Scaler(size=())
-
         # For confusion matrix
         self._y_hat = []
         self._y = []
@@ -104,25 +71,19 @@ class Model(pl.LightningModule):
 
     def training_step(self, batch, _):
         x, y = batch
-        # x = (x - 17.2) / 252
-        x = self.scaler.transform(x)
 
         pred = self(x)
         loss = F.cross_entropy(pred, y)
-        self.log("train_loss", loss, prog_bar=True, logger=True)
-        self.log("train_mean", x.mean(), prog_bar=True, logger=True)
-        self.log("train_std", x.std(), prog_bar=True, logger=True)
+        self.log(f"train_loss", loss, prog_bar=True, logger=True)
 
         return loss
 
     def validation_step(self, batch, _):
         x, y = batch
-        # x = (x - 17.2) / 252
-        x = self.scaler.transform(x)
 
         pred = self(x)
         loss = F.cross_entropy(pred, y)
-        self.log("val_loss", loss, prog_bar=True, logger=True)
+        self.log(f"val_loss", loss, prog_bar=True, logger=True)
 
         y_hat = torch.argmax(pred, dim=1)
         accuracy = (y == y_hat).float().mean()  # Need to cast Long tensor to Float
@@ -139,12 +100,6 @@ class Model(pl.LightningModule):
         return [self.optimizer], [scheduler_dict]
 
     def on_fit_start(self):
-        all_x, _ = self.trainer.datamodule.train_dataset[:]
-        self.scaler.fit(all_x)
-        self.scaler.to("cuda")
-        print("mean.shape", self.scaler.mean.shape, "mean", self.scaler.mean)
-        print("std.shape", self.scaler.std.shape, "std", self.scaler.std)
-
         self.class_names = self.trainer.datamodule.class_names
 
         self.logger.log_hyperparams(
@@ -238,7 +193,6 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
 
     parser.add_argument("--batch_size", type=int, default=128)
-    parser.add_argument("--train_ratio", type=int, default=0.9)
     parser.add_argument("--shuffle", type=bool, default=True)
     parser.add_argument("--num_workers", type=int, default=4)
     parser.add_argument("--data_dir", type=str, default="data")
