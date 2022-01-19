@@ -12,7 +12,7 @@ from lib import AudioDataModule, VanillaCNN, MobileNetV3Backbone, convnext_tiny
 
 
 class Scaler(nn.Module):
-    '''Basic standard scaler class'''
+    '''Basic log scaler class'''
 
     def __init__(self, size: int):
         super().__init__()
@@ -22,15 +22,14 @@ class Scaler(nn.Module):
         self.device = torch.device("cpu")
 
     def fit(self, x):
-        # Weird reshape to handle extra dimensions
-        self.mean = torch.mean(x.reshape(-1, x.size(-1)), dim=0)
-        self.std = torch.std(x.reshape(-1, x.size(-1)), dim=0)
+        x = torch.clip(x, min=1e-8)
+        x = torch.log10(x).flatten()
+        self.mean = torch.mean(x, dim=0)
+        self.std = torch.std(x, dim=0)
 
     def transform(self, x):
-        return (x - self.mean) / self.std
-
-    def inverse_transform(self, x):
-        return x * self.std + self.mean
+        x = torch.clip(x, min=1e-8)
+        return (torch.log10(x) - self.mean) / self.std
 
     def to(self, device):
         self.mean = self.mean.to(device)
@@ -93,7 +92,8 @@ class Model(pl.LightningModule):
                 cooldown=self.hparams.plateau_cooldown,
             )
 
-        self.scaler = Scaler(self.hparams.height)
+        # self.scaler = Scaler((1, self.hparams.height, self.hparams.width))
+        self.scaler = Scaler(size=())
 
         # For confusion matrix
         self._y_hat = []
@@ -109,7 +109,9 @@ class Model(pl.LightningModule):
 
         pred = self(x)
         loss = F.cross_entropy(pred, y)
-        self.log(f"train_loss", loss, prog_bar=True, logger=True)
+        self.log("train_loss", loss, prog_bar=True, logger=True)
+        self.log("train_mean", x.mean(), prog_bar=True, logger=True)
+        self.log("train_std", x.std(), prog_bar=True, logger=True)
 
         return loss
 
@@ -120,7 +122,7 @@ class Model(pl.LightningModule):
 
         pred = self(x)
         loss = F.cross_entropy(pred, y)
-        self.log(f"val_loss", loss, prog_bar=True, logger=True)
+        self.log("val_loss", loss, prog_bar=True, logger=True)
 
         y_hat = torch.argmax(pred, dim=1)
         accuracy = (y == y_hat).float().mean()  # Need to cast Long tensor to Float
@@ -137,9 +139,11 @@ class Model(pl.LightningModule):
         return [self.optimizer], [scheduler_dict]
 
     def on_fit_start(self):
-        dataset = self.trainer.datamodule.train_dataset[:][0]
-        self.scaler.fit(dataset)
+        all_x, _ = self.trainer.datamodule.train_dataset[:]
+        self.scaler.fit(all_x)
         self.scaler.to("cuda")
+        print("mean.shape", self.scaler.mean.shape, "mean", self.scaler.mean)
+        print("std.shape", self.scaler.std.shape, "std", self.scaler.std)
 
         self.class_names = self.trainer.datamodule.class_names
 
@@ -234,6 +238,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
 
     parser.add_argument("--batch_size", type=int, default=128)
+    parser.add_argument("--train_ratio", type=int, default=0.9)
     parser.add_argument("--shuffle", type=bool, default=True)
     parser.add_argument("--num_workers", type=int, default=4)
     parser.add_argument("--data_dir", type=str, default="data")

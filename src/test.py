@@ -2,13 +2,13 @@ import gradio as gr
 import torch
 import torchaudio.transforms
 import torch.nn.functional as F
-import tempfile
+import random
 from train import Model
 
 
 TARGET_SAMPLE_RATE = 22050
 N_SAMPLES = 22050
-TO_MELSPECTROGRAM = torchaudio.transforms.MelSpectrogram(sample_rate=TARGET_SAMPLE_RATE, n_fft=1024, hop_length=256, n_mels=128)
+TO_MELSPECTROGRAM = torchaudio.transforms.MelSpectrogram(sample_rate=TARGET_SAMPLE_RATE, n_fft=1024, hop_length=512, n_mels=64)
 CLASS_IDS = [
     "air_conditioner",
     "car_horn",
@@ -22,24 +22,20 @@ CLASS_IDS = [
     "street_music",
 ]
 
-model = Model.load_from_checkpoint("checkpoints/youthful-lake-45.ckpt")
+model = Model.load_from_checkpoint("checkpoints/spring-wind-54.ckpt")
 
 
 def preprocess(audio):
-    if isinstance(audio, tempfile._TemporaryFileWrapper):
-        audio = torch.load(audio.name)
-        return audio.unsqueeze(0)
-
-    sample_rate, data = audio
-    t_data = torch.from_numpy(data)
+    t_data, sample_rate = torchaudio.load(audio.name)
 
     # Reshape
     if len(t_data.shape) == 1:
         t_data = t_data.unsqueeze(1)
-    t_data = t_data.transpose(0, 1).float()
+    elif t_data.size(1) == 1 or t_data.size(1) == 2:
+        t_data = t_data.T
 
     # Normalize
-    t_data = t_data / t_data.max()
+    # t_data = t_data / t_data.max()
 
     # Resample
     if sample_rate != TARGET_SAMPLE_RATE:
@@ -53,7 +49,8 @@ def preprocess(audio):
     # Fix length
     len_data = t_data.shape[1]
     if len_data > N_SAMPLES:
-        t_data = t_data[:, :N_SAMPLES]
+        random_index = random.randint(0, len_data - N_SAMPLES)
+        t_data = t_data[:, random_index : random_index + N_SAMPLES]
     else:
         len_missing = N_SAMPLES - len_data
         t_data = F.pad(t_data, (0, len_missing))
@@ -68,8 +65,8 @@ def preprocess(audio):
 
 
 @torch.no_grad()
-def audio_classification(audio1, audio2, audio3):
-    audio = audio1 or audio2 or audio3
+def audio_classification(audio1, audio2):
+    audio = audio1 or audio2
     t_data = preprocess(audio)
 
     x = model.scaler.transform(t_data)
@@ -80,9 +77,9 @@ def audio_classification(audio1, audio2, audio3):
 
 
 inputs = [
-    gr.inputs.Audio(source="upload", type="numpy", label="WAV", optional=True),
-    gr.inputs.Audio(source="microphone", type="numpy", label="Record", optional=True),
-    gr.inputs.File(file_count="single", type="file", label="tensor", optional=True)
+    gr.inputs.Audio(source="upload", type="file", label="WAV", optional=True),
+    gr.inputs.Audio(source="microphone", type="file", label="Record", optional=True),
+    # gr.inputs.File(file_count="single", type="file", label="tensor", optional=True)
 ]
 outputs = gr.outputs.Label(num_top_classes=3)
 interface = gr.Interface(fn=audio_classification, inputs=inputs, outputs=outputs).launch()

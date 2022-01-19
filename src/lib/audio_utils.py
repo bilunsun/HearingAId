@@ -1,11 +1,9 @@
 # Mostly taken from https://pytorch.org/tutorials/beginner/audio_preprocessing_tutorial.html
+import argparse
 import librosa
 import matplotlib.pyplot as plt
 import torch
 import torchaudio
-
-
-SAMPLE_WAV_PATH = "data/waves_yesno/0_0_0_0_1_1_1_1.wav"
 
 
 def plot_waveform(waveform, sample_rate, title="Waveform", xlim=None, ylim=None):
@@ -67,23 +65,42 @@ def plot_spectrogram(spectrogram, title=None, ylabel="Frequency bin", aspect="au
     plt.show()
 
 
-def plot_melspectrogram(waveform, n_fft=1024, win_length=None, hop_length=512, n_mels=128):
+def plot_melspectrogram(waveform, sample_rate, n_fft=1024, hop_length=512, win_length=None, n_mels=64, norm="slaney"):
     mel_spectrogram = torchaudio.transforms.MelSpectrogram(
         sample_rate=sample_rate,
         n_fft=n_fft,
-        win_length=win_length,
         hop_length=hop_length,
-        center=True,
-        pad_mode="reflect",
-        power=2.0,
-        norm="slaney",
-        onesided=True,
+        win_length=win_length,
         n_mels=n_mels,
-        mel_scale="htk",
+        norm=norm
     )
     spectrogram = mel_spectrogram(waveform).squeeze(0)  # Remove batch dimension
+    # spectrogram = spectrogram.permute(1, 2, 0)
+    spectrogram = spectrogram.mean(dim=0)
+    spectrogram /= spectrogram.max()
 
-    plot_spectrogram(spectrogram)
+    print("img_shape", spectrogram.shape)
+    plot_spectrogram(spectrogram, title="MelSpectrogram")
+
+    return spectrogram
+
+
+def plot_x_distribution(x):
+    x = torch.clip(x, min=1e-10).flatten()
+    _, (ax_og, ax_log, ax_scaled) = plt.subplots(1, 3)
+
+    ax_og.hist(x.numpy(), bins=50)
+    ax_og.set_title("OG")
+
+    x = torch.log10(x)
+    ax_log.hist(x.numpy(), bins=50)
+    ax_log.set_title("Log")
+
+    x = (x - x.mean()) / x.std()
+    ax_scaled.hist(x.numpy(), bins=50)
+    ax_scaled.set_title("Scaled")
+
+    plt.show()
 
 
 def plot_pitch(waveform, sample_rate):
@@ -146,12 +163,50 @@ def print_stats(waveform, sample_rate=None, src=None):
     print()
 
 
-if __name__ == "__main__":
-    waveform, sample_rate = torchaudio.load(SAMPLE_WAV_PATH)
+def main(args):
+    waveform, sample_rate = torchaudio.load(args.wav_path)
 
     print_stats(waveform, sample_rate=sample_rate)
-    plot_waveform(waveform, sample_rate)
-    plot_pitch(waveform, sample_rate)
-    plot_specgram(waveform, sample_rate)
-    plot_melspectrogram(waveform)
+
+    if args.plot_waveform:
+        plot_waveform(waveform, sample_rate)
+
+    if args.plot_pitch:
+        plot_pitch(waveform, sample_rate)
+
+    if args.plot_spectrogram:
+        plot_specgram(waveform, sample_rate)
+
+    # Update sample rate if needed
+    if sample_rate != args.target_sample_rate:
+        resample = torchaudio.transforms.Resample(sample_rate, args.target_sample_rate)
+        waveform = resample(waveform)
+
+    waveform = waveform[:, :args.target_sample_rate]
+    mel_spectrogram = plot_melspectrogram(waveform, args.target_sample_rate, n_fft=args.n_fft, hop_length=args.hop_length, win_length=args.win_length, n_mels=args.n_mels, norm=args.norm)
+    plot_x_distribution(mel_spectrogram)
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+
+    parser.add_argument("--wav_path", type=str, default="data/UrbanSound8K/audio/fold1/7061-6-0-0.wav")
+
+    # Choose what to plot
+    parser.add_argument("--plot_waveform", action="store_true")
+    parser.add_argument("--plot_pitch", action="store_true")
+    parser.add_argument("--plot_spectrogram", action="store_true")
+
+    # For MelSpectrogram
+    parser.add_argument("--target_sample_rate", type=int, default=22050)
+    parser.add_argument("--n_fft", type=int, default=1024)
+    parser.add_argument("--hop_length", type=int, default=512)
+    parser.add_argument("--win_length", type=int, default=None)
+    parser.add_argument("--n_mels", type=int, default=64)
+    parser.add_argument("--norm", type=str, default=None)
+
+    args = parser.parse_args()
+
+    main(args)
+
 

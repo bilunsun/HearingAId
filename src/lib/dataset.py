@@ -66,7 +66,7 @@ class UrbanSound8KDataset(Dataset):
         self.target_sample_rate = target_sample_rate
         self.n_samples = n_samples
 
-        self.transformation = transformation or torchaudio.transforms.MelSpectrogram(sample_rate=target_sample_rate, n_fft=1024, hop_length=256, n_mels=128)
+        self.transformation = transformation or torchaudio.transforms.MelSpectrogram(sample_rate=target_sample_rate, n_fft=1024, hop_length=512, n_mels=64)
 
         # Open the metadata file
         with open(os.path.join(self.root, "metadata", "UrbanSound8K.csv"), "r", newline="") as f:
@@ -84,29 +84,31 @@ class UrbanSound8KDataset(Dataset):
             self.preprocess(file_paths, labels)
         elif not os.listdir(self.tensor_cache_dir):
             self.preprocess(file_paths, labels)
+        else:
+            # Load the dataset into memory
+            print("Loading dataset into memory...")
+            signals = []
+            class_ids = []
+            for filename in tqdm(os.listdir(self.tensor_cache_dir)):
+                class_id = int(filename.split("__")[0])
+                signal = torch.load(os.path.join(self.tensor_cache_dir, filename))
 
-        # Load the dataset into memory
-        print("Loading dataset into memory...")
-        signals = []
-        class_ids = []
-        for filename in tqdm(os.listdir(self.tensor_cache_dir)):
-            class_id = int(filename.split("__")[0])
-            signal = torch.load(os.path.join(self.tensor_cache_dir, filename))
+                signals.append(signal)
+                class_ids.append(class_id)
+            print("Done loading dataset into memory...")
 
-            signals.append(signal)
-            class_ids.append(class_id)
-        print("Done loading dataset into memory...")
-
-        self.signals = torch.cat(signals).unsqueeze(1)  # Need an extra dim for channels
-        self.class_ids = torch.LongTensor(class_ids)
+            self.signals = torch.cat(signals).unsqueeze(1)  # Need an extra dim for channels
+            self.class_ids = torch.LongTensor(class_ids)
 
     def preprocess(self, file_paths, labels):
         print("Preprocessing...")
 
+        signals = []
+        class_ids = []
         for filename, label in tqdm(zip(file_paths, labels), total=len(labels)):
-            wav, _ = torchaudio.load(filename)
+            wav, sample_rate = torchaudio.load(filename)
 
-            t_data = self._resample(wav, self.target_sample_rate)
+            t_data = self._resample(wav, sample_rate)
             t_data = self._mix_down(t_data)
             t_data_list = self._fix_length(t_data)
             t_data_list = [self.transformation(t_data) for t_data in t_data_list]
@@ -119,6 +121,11 @@ class UrbanSound8KDataset(Dataset):
                 cache_path = os.path.join(self.tensor_cache_dir, f"{class_id}__{basename}_{i}.pt")
                 torch.save(t_data, Path(cache_path))
 
+                signals.append(t_data)
+                class_ids.append(class_id)
+
+        self.signals = torch.cat(signals).unsqueeze(1)  # Need an extra dim for channels
+        self.class_ids = torch.LongTensor(class_ids)
         print("Done preprocessing.")
 
     def __getitem__(self, index):
@@ -137,7 +144,7 @@ class UrbanSound8KDataset(Dataset):
     def _fix_length(self, t_data):
         len_data = t_data.shape[1]
         if len_data > self.n_samples:
-            t_data_list = [t_data[:, i:i+self.n_samples] for i in range(len_data // self.n_samples)]
+            t_data_list = [t_data[:, i*self.n_samples:(i+1)*self.n_samples] for i in range(len_data // self.n_samples)]
             return t_data_list
         elif len_data < self.n_samples:
             len_missing = self.n_samples - len_data
@@ -162,10 +169,13 @@ class UrbanSound8KDataset(Dataset):
 
 
 class AudioDataModule(pl.LightningDataModule):
-    def __init__(self, batch_size: int, shuffle: bool, num_workers: int, **kwargs):
+    def __init__(self, batch_size: int, train_ratio: float, shuffle: bool, num_workers: int, **kwargs):
         super().__init__()
 
+        assert 0 < train_ratio < 1
+
         self.batch_size = batch_size
+        self.train_ratio = train_ratio
         self.shuffle = shuffle
         self.num_workers = num_workers
 
@@ -173,14 +183,14 @@ class AudioDataModule(pl.LightningDataModule):
         print(f"There are {len(dataset)} samples in the dataset.")
         signal, _ = dataset[1]
 
-        self.width = signal.size(-2)
-        self.height = signal.size(-1)
+        self.height = signal.size(-2)
+        self.width = signal.size(-1)
 
         self.n_classes = dataset.n_classes
         self.class_names = dataset.class_names
         print("N classes", self.n_classes)
 
-        train_len = int(len(dataset) * 0.8)
+        train_len = int(len(dataset) * self.train_ratio)
         val_len = len(dataset) - train_len
         self.train_dataset, self.val_dataset = random_split(dataset, [train_len, val_len])
         print("OK")
