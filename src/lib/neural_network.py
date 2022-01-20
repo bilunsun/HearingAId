@@ -126,6 +126,7 @@ class CustomCNN(nn.Module):
         self,
         in_channels: int = 1,
         hidden_channels: List[int] = [64, 256, 512, 1024],
+        classifier_hidden_dims: int = 1024,
         n_classes: int = 10,
     ):
         super().__init__()
@@ -143,9 +144,9 @@ class CustomCNN(nn.Module):
 
         self.pool = Reduce("b c h w -> b c", reduction="max")
         self.classifier = nn.Sequential(
-            nn.Linear(hidden_channels[-1], 1024),
+            nn.Linear(hidden_channels[-1], classifier_hidden_dims),
             nn.ReLU(inplace=True),
-            nn.Linear(1024, n_classes)
+            nn.Linear(classifier_hidden_dims, n_classes)
         )
         self.dequant = torch.quantization.DeQuantStub()
         # QUANTIZATION ===================

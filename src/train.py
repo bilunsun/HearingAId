@@ -12,7 +12,7 @@ from lib import AudioDataModule, VanillaCNN, MobileNetV3Backbone, convnext_tiny,
 
 
 class Scaler(nn.Module):
-    '''Basic log scaler class'''
+    """Basic log scaler class"""
 
     def __init__(self, size: int):
         super().__init__()
@@ -37,7 +37,7 @@ class Scaler(nn.Module):
         self.device = device
 
     def __repr__(self):
-        return f'mean: {self.mean}\tstd: {self.std}'
+        return f"mean: {self.mean}\tstd: {self.std}"
 
 
 class Model(pl.LightningModule):
@@ -51,6 +51,8 @@ class Model(pl.LightningModule):
 
         parser.add_argument("--width", type=int, default=128)
         parser.add_argument("--height", type=int, default=87)
+        parser.add_argument("--hidden_channels", type=int, nargs="+", default=[64, 256, 512])
+        parser.add_argument("--classifier_hidden_dims", type=int, default=256)
         parser.add_argument("--n_classes", type=int, default=10)
 
         parser.add_argument("--lr", type=float, default=3e-4)
@@ -63,7 +65,7 @@ class Model(pl.LightningModule):
 
         return parser
 
-    def __init__(self, lr, scheduler, min_lr, plateau_factor, plateau_patience, plateau_cooldown, *args, **kwargs):
+    def __init__(self, *args, **kwargs):
         super().__init__()
 
         self.save_hyperparameters()
@@ -71,14 +73,20 @@ class Model(pl.LightningModule):
         # self.model = MobileNetV3Backbone(n_classes=self.hparams.n_classes)
         # self.model = convnext_tiny(in_chans=1, num_classes=self.hparams.n_classes)
         # self.model = VanillaCNN(width=self.hparams.width, height=self.hparams.height, n_classes=self.hparams.n_classes)
-        self.model = CustomCNN(n_classes=self.hparams.n_classes)
+        self.model = CustomCNN(
+            n_classes=self.hparams.n_classes,
+            hidden_channels=self.hparams.hidden_channels,
+            classifier_hidden_dims=self.hparams.classifier_hidden_dims,
+        )
         # QUANTIZATION
-        self.model.qconfig = torch.quantization.get_default_qat_qconfig("fbgemm")
+        self.model.qconfig = torch.quantization.get_default_qat_qconfig("qnnpack")
         # self.model = torch.quantization.fuse_modules(self.model, [["depthwise", "pointwise", "activation"]])
         self.model = torch.quantization.prepare_qat(self.model)
 
         if self.hparams.load_weights_from_ckpt:
-            self.model = Model.load_from_checkpoint(self.hparams.load_weights_from_ckpt, load_weights_from_ckpt=None).model
+            self.model = Model.load_from_checkpoint(
+                self.hparams.load_weights_from_ckpt, load_weights_from_ckpt=None
+            ).model
 
         self.optimizer = torch.optim.Adam(self.model.parameters(), lr=self.hparams.lr)
 
@@ -173,13 +181,7 @@ class Model(pl.LightningModule):
 
         # import pdb; pdb.set_trace()
         self.logger.experiment.log(
-            {
-                "Confusion Matrix": wandb.plot.confusion_matrix(
-                    y_true=y,
-                    preds=y_hat,
-                    class_names=self.class_names,
-                )
-            }
+            {"Confusion Matrix": wandb.plot.confusion_matrix(y_true=y, preds=y_hat, class_names=self.class_names,)}
         )
 
         # Reset
@@ -222,7 +224,7 @@ def main(args):
         monitor="val_accuracy",
         mode="max",
         every_n_epochs=1,
-        verbose=True
+        verbose=True,
     )
 
     callbacks = [checkpoint_callback]
