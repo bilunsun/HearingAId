@@ -9,7 +9,7 @@ model = Model.load_from_checkpoint("checkpoints/balmy-donkey-71.ckpt").model
 # Raspberry Pi 4 workaround for the following error:
 # RuntimeError: Didn't find engine for operation quantized::conv_prepack NoQEngine
 import platform
-if platform.system == 'Linux':
+if platform.system() == 'Linux':
     torch.backends.quantized.engine = 'qnnpack'
 
 
