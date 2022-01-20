@@ -128,13 +128,12 @@ class CustomCNN(nn.Module):
         hidden_channels: List[int] = [64, 256, 512, 1024],
         classifier_hidden_dims: int = 1024,
         n_classes: int = 10,
+        qat: bool = False
     ):
         super().__init__()
 
-        self.in_channels = in_channels
+        self.qat = qat
 
-        # QUANTIZATION ===================
-        self.quant = torch.quantization.QuantStub()
         self.in_conv = nn.Conv2d(in_channels=in_channels, out_channels=hidden_channels[0], kernel_size=3, stride=2)
 
         hidden_channels = [in_channels] + hidden_channels
@@ -148,17 +147,22 @@ class CustomCNN(nn.Module):
             nn.ReLU(inplace=True),
             nn.Linear(classifier_hidden_dims, n_classes)
         )
-        self.dequant = torch.quantization.DeQuantStub()
-        # QUANTIZATION ===================
 
+        if self.qat:
+            self.quant = torch.quantization.QuantStub()
+            self.dequant = torch.quantization.DeQuantStub()
 
     def forward(self, x):
-        x = self.quant(x)
+        if self.qat:
+            x = self.quant(x)
+
         for conv in self.sep_conv_blocks:
             x = conv(x)
         x = self.pool(x)
         x = self.classifier(x)
-        x = self.dequant(x)
+
+        if self.qat:
+            x = self.dequant(x)
 
         return x
 

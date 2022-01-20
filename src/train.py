@@ -55,6 +55,7 @@ class Model(pl.LightningModule):
         parser.add_argument("--classifier_hidden_dims", type=int, default=256)
         parser.add_argument("--n_classes", type=int, default=10)
 
+        parser.add_argument("--qat", action="store_true")
         parser.add_argument("--lr", type=float, default=3e-4)
         parser.add_argument("--scheduler", type=str, choices=[None, "cosine", "plateau"], default=None)
         parser.add_argument("--min_lr", type=float, default=1e-7)
@@ -77,11 +78,14 @@ class Model(pl.LightningModule):
             n_classes=self.hparams.n_classes,
             hidden_channels=self.hparams.hidden_channels,
             classifier_hidden_dims=self.hparams.classifier_hidden_dims,
+            qat=self.hparams.qat
         )
+
         # QUANTIZATION
-        self.model.qconfig = torch.quantization.get_default_qat_qconfig("qnnpack")
-        # self.model = torch.quantization.fuse_modules(self.model, [["depthwise", "pointwise", "activation"]])
-        self.model = torch.quantization.prepare_qat(self.model)
+        if self.hparams.qat:
+            self.model.qconfig = torch.quantization.get_default_qat_qconfig("qnnpack")
+            # self.model = torch.quantization.fuse_modules(self.model, [["depthwise", "pointwise", "activation"]])
+            self.model = torch.quantization.prepare_qat(self.model)
 
         if self.hparams.load_weights_from_ckpt:
             self.model = Model.load_from_checkpoint(
