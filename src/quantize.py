@@ -3,7 +3,11 @@ import torch
 
 from train import Model
 
-model = Model.load_from_checkpoint("checkpoints/fancy-frog-64.ckpt").model
+model = Model.load_from_checkpoint("checkpoints/worthy-monkey-70.ckpt").model
+
+# Raspberry Pi 4 workaround for the following error:
+# RuntimeError: Didn't find engine for operation quantized::conv_prepack NoQEngine
+torch.backends.quantized.engine = 'qnnpack'
 
 
 def print_model_size(mdl):
