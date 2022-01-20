@@ -1,9 +1,9 @@
-from itertools import count
 import torch
 import torch.nn.functional as F
+from einops.layers.torch import Reduce
 from torch import nn
 from torchvision import models
-from typing import Tuple
+from typing import Tuple, List
 
 
 class VanillaCNN(nn.Module):
@@ -77,6 +77,102 @@ class VanillaCNN(nn.Module):
         return x
 
 
+# class Separable3x3Conv2d(nn.Module):
+#     """Implements a basic separable 3x3 Conv2d block from https://arxiv.org/pdf/1704.04861.pdf"""
+
+#     def __init__(self, in_channels: int, out_channels: int, bias: bool = False) -> None:
+#         super().__init__()
+
+#         self.depthwise = nn.Conv2d(in_channels=in_channels, out_channels=in_channels, kernel_size=3, padding=1, groups=in_channels, bias=bias)
+#         self.depthwise = nn.Conv2d(in_channels=in_channels, out_channels=out_channels, kernel_size=1, bias=bias)
+
+#         self.bn1 = nn.BatchNorm2d(in_channels)
+#         self.bn2 = nn.BatchNorm2d(out_channels)
+
+#         self.activation = nn.ReLU(inplace=True)
+
+#     def forward(self, x):
+#         x = self.activation(self.bn1(self.depthwise(x)))
+#         x = self.activation(self.bn2(self.pointwise(x)))
+
+#         return x
+
+
+class Separable3x3Conv2d(nn.Module):
+    """Inspired from https://arxiv.org/pdf/1704.04861.pdf"""
+
+    def __init__(self, in_channels: int, out_channels: int, stride: int = 1, bias: bool = False) -> None:
+        super().__init__()
+
+        self.depthwise = nn.Conv2d(in_channels=in_channels, out_channels=in_channels, stride=stride, kernel_size=3, padding=1, groups=in_channels, bias=bias)
+        self.pointwise = nn.Conv2d(in_channels=in_channels, out_channels=out_channels, kernel_size=1, bias=bias)
+
+        self.activation = nn.ReLU(inplace=True)
+
+    def forward(self, x):
+        x = self.depthwise(x)
+        x = self.pointwise(x)
+        x = self.activation(x)
+
+        return x
+
+
+class CustomCNN(nn.Module):
+    """
+    Convolutional Neural Network architecture with separable convolutions
+    """
+
+    def __init__(
+        self,
+        in_channels: int = 1,
+        hidden_channels: List[int] = [64, 256, 512, 1024],
+        n_classes: int = 10,
+    ):
+        super().__init__()
+
+        self.in_channels = in_channels
+
+        # QUANTIZATION ===================
+        self.quant = torch.quantization.QuantStub()
+        self.in_conv = nn.Conv2d(in_channels=in_channels, out_channels=hidden_channels[0], kernel_size=3, stride=2)
+
+        hidden_channels = [in_channels] + hidden_channels
+        self.sep_conv_blocks = nn.ModuleList([
+            Separable3x3Conv2d(in_channels=ic, out_channels=io, stride=2) for ic, io in zip(hidden_channels[:-1], hidden_channels[1:])
+        ])
+
+        self.pool = Reduce("b c h w -> b c", reduction="max")
+        self.classifier = nn.Sequential(
+            nn.Linear(hidden_channels[-1], 1024),
+            nn.ReLU(inplace=True),
+            nn.Linear(1024, n_classes)
+        )
+        self.dequant = torch.quantization.DeQuantStub()
+        # QUANTIZATION ===================
+
+
+    def forward(self, x):
+        x = self.quant(x)
+        for conv in self.sep_conv_blocks:
+            x = conv(x)
+        x = self.pool(x)
+        x = self.classifier(x)
+        x = self.dequant(x)
+
+        return x
+
+
+if __name__ == "__main__":
+    model = CustomCNN(height=64, width=44)
+
+    n_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+    print(n_params)
+
+    x = torch.randn(32, 1, 64, 44)
+    out = model(x)
+    print(out.shape)
+
+
 # class ConvNeXtBlock(nn.Module):
 
 #     def __init__(self, n_channels: int):
@@ -102,8 +198,8 @@ class MobileNetV3Backbone(nn.Module):
         self.backbone = models.mobilenet_v3_small(pretrained=True)
 
         # Freeze the backbone
-        # for p in self.backbone.parameters():
-        #     p.requires_grad = False
+        for p in self.backbone.parameters():
+            p.requires_grad = False
 
         # Transfer learning with only the last few blocks/layers
         self.backbone.features[-2].requires_grad = True
@@ -116,7 +212,6 @@ class MobileNetV3Backbone(nn.Module):
         # Hacky reshaping and scaling
         x = F.interpolate(x, size=(244, 244))
         x = x.repeat(1, 3, 1, 1)
-        x = (x - 30) / 300
 
         return self.backbone(x)
 

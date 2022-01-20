@@ -8,7 +8,7 @@ from pytorch_lightning.loggers import WandbLogger
 from torchvision import models
 from torch import nn
 
-from lib import AudioDataModule, VanillaCNN, MobileNetV3Backbone, convnext_tiny
+from lib import AudioDataModule, VanillaCNN, MobileNetV3Backbone, convnext_tiny, CustomCNN
 
 
 class Scaler(nn.Module):
@@ -69,8 +69,13 @@ class Model(pl.LightningModule):
         self.save_hyperparameters()
 
         # self.model = MobileNetV3Backbone(n_classes=self.hparams.n_classes)
-        self.model = convnext_tiny(in_chans=1, num_classes=self.hparams.n_classes)
+        # self.model = convnext_tiny(in_chans=1, num_classes=self.hparams.n_classes)
         # self.model = VanillaCNN(width=self.hparams.width, height=self.hparams.height, n_classes=self.hparams.n_classes)
+        self.model = CustomCNN(n_classes=self.hparams.n_classes)
+        # QUANTIZATION
+        self.model.qconfig = torch.quantization.get_default_qat_qconfig("fbgemm")
+        # self.model = torch.quantization.fuse_modules(self.model, [["depthwise", "pointwise", "activation"]])
+        self.model = torch.quantization.prepare_qat(self.model)
 
         if self.hparams.load_weights_from_ckpt:
             self.model = Model.load_from_checkpoint(self.hparams.load_weights_from_ckpt, load_weights_from_ckpt=None).model
