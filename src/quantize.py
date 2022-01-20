@@ -5,6 +5,7 @@ from train import Model
 
 model = Model.load_from_checkpoint("checkpoints/worthy-monkey-70.ckpt").model
 
+import pdb; pdb.set_trace()
 # Raspberry Pi 4 workaround for the following error:
 # RuntimeError: Didn't find engine for operation quantized::conv_prepack NoQEngine
 torch.backends.quantized.engine = 'qnnpack'
