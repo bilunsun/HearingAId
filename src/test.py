@@ -82,4 +82,4 @@ inputs = [
     # gr.inputs.File(file_count="single", type="file", label="tensor", optional=True)
 ]
 outputs = gr.outputs.Label(num_top_classes=3)
-interface = gr.Interface(fn=audio_classification, inputs=inputs, outputs=outputs).launch()
+interface = gr.Interface(fn=audio_classification, inputs=inputs, outputs=outputs).launch(share=True)
