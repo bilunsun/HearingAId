@@ -13,7 +13,11 @@ pipwin install pyaudio
 ```
 
 ## Raspberry Pi 4 Setup
-Primary challenge encountered is the installation of Pytorch.
+
+Primary challenge encountered is the installation of Pytorch and Torch Audio.
+
+### PyTorch Build
+
 To install Pytorch, I built it from the pytorch repo, because the architecture of the Pi 4 is `aarch64`, and there are no available wheels for this architecture from pip.
 
 To install PyTorch from scratch, you will need a minimum of 5.5 GB of RAM (swap + real memory) with the settings below. If parts of the build fail, try reducing the number of jobs to 1 or 2. Ensure that you are also running a version of Python that will be compatible with the other packages - 3.8 is the latest recommended version. 3.9 and 3.10 may have compatibility issues with certain packages that we will use. The suggested method for handling multiple Python versions is to use `pyenv`. To install `pyenv`, use:
@@ -115,4 +119,91 @@ source venv/bin/activate
 # suggest using tab to autocomplete the file name
 pip3 install ~/pytorch/dist/torch-1.10.0a0+git36449ea-cp38-cp38-linux_aarch64.whl
 
+```
+
+### TorchAudio Build
+
+Similar to above, to install TorchAudio:
+```
+# Clone v0.10.0 from GitHub
+cd ~
+git clone -b v0.10.0 --recursive git@github.com:pytorch/audio.git  # clone must be recursive!
+cd audio
+pyenv local 3.8.12  # set local Python Version
+
+# New virtual environment
+python -m venv venv
+source venv/bin/activate
+
+# Install Torch that we built ourselves
+pip install ~/pytorch/dist/torch-1.10.0-cp38-cp38-linux-aarch64.whl
+
+# Install other dependencies (technically not necessary, but easier than selecting specific parts to install
+pip install -r requirements.txt
+pip install wheel
+
+# Build wheel for TorchAudio
+export MAX_JOBS=2  # limit jobs to 1 if build fails due to running out of memory
+
+python setup.py bdist_wheel
+```
+
+You may need to update CMake. As of 21 January 2022, the TorchAudio build requires CMake >= 3.18. To update CMake, visit their website for the latest version: [CMake Download](https://cmake.org/download/). Use `wget` to fetch the `*.sh` script:
+```
+cd ~
+wget https://github.com/Kitware/CMake/releases/download/v3.22.1/cmake-3.22.1-linux-aarch64.sh
+chmod +x cmake-3.22.1-linux-aarch64.sh
+sudo bash cmake-3.22.1-linux-aarch64.sh  # Follow instructions of the script - answer yes twice
+
+# Make symbolic link or copy directly
+sudo ln -s ~/cmake-3.22.1-linux-aarch64/bin/* /usr/local/bin
+
+# Check version is updated correctly
+cmake --version
+```
+
+After updating CMake, you may also need to install ninja-build, which can be done with:
+```
+sudo apt-get install ninja-build
+```
+
+## Jetson Nano Setup
+
+As with the Raspberry Pi 4, one of the challenges is PyTorch (possibly the only challenge). As we use Python 3.8, we need to build PyTorch ourselves (Nvidia provides a pre-built wheel for Python 3.6). The saving grace is that this is well-documented by Nvidia, and their guide can be found here: [PyTorch for Jetson](https://forums.developer.nvidia.com/t/pytorch-for-jetson-version-1-10-now-available/72048)
+
+### Jetson Nano TorchAudio
+
+For TorchAudio, the setup process is the same as above for the Raspberry Pi, except we need to do some extra setup. Add the CUDA compiler to the path by adding the following to your `.bashrc` (or other profile). Put this before evaluating the ssh-agent and adding your SSH keys, because if you Ctrl-C adding your SSH keys, the path will not be updated to include the CUDA compiler.
+```
+export PATH="/usr/local/cuda/bin:$PATH"
+```
+
+Test that the above has worked by logging out and logging back in or `source`-ing your profile again:
+```
+source ~/.bashrc
+nvcc --version  # check for CUDA compiler
+```
+
+The default `CMakeLists.txt` that comes in the torchaudio repo may give an error like:
+```
+CMake Error at /snap/cmake/1001/share/cmake-3.22/Modules/CMakeTestCUDACompiler.cmake:56 (message):
+  The CUDA compiler
+
+    "/usr/local/cuda/bin"
+
+  is not able to compile a simple test program.
+```
+
+As we can see, CMake is not properly calling the CUDA compiler (which is /usr/local/cuda/bin/nvcc, the bin is just the folder). To resolve this, edit `CMakeLists.txt` and find the `if(USE_CUDA)` on line 80. Comment out the `enable_language` call and replace it with `find_package` as below:
+
+```
+if(USE_CUDA)
+  # enable_language(CUDA)
+  find_package(CUDAToolkit REQUIRED)
+endif()
+```
+
+CUDA should be automatically detected and used, however, you can force it with:
+```
+export USE_CUDA=1
 ```
