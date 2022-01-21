@@ -125,14 +125,12 @@ class CustomCNN(nn.Module):
     def __init__(
         self,
         in_channels: int = 1,
-        hidden_channels: List[int] = [64, 256, 512, 1024],
+        hidden_channels: List[int] = [64, 128, 256, 512, 1024, 2048],
         classifier_hidden_dims: int = 1024,
         n_classes: int = 10,
         qat: bool = False
     ):
         super().__init__()
-
-        self.qat = qat
 
         self.in_conv = nn.Conv2d(in_channels=in_channels, out_channels=hidden_channels[0], kernel_size=3, stride=2)
 
@@ -141,28 +139,26 @@ class CustomCNN(nn.Module):
             Separable3x3Conv2d(in_channels=ic, out_channels=io, stride=2) for ic, io in zip(hidden_channels[:-1], hidden_channels[1:])
         ])
 
-        self.pool = Reduce("b c h w -> b c", reduction="max")
         self.classifier = nn.Sequential(
-            nn.Linear(hidden_channels[-1], classifier_hidden_dims),
-            nn.ReLU(inplace=True),
-            nn.Linear(classifier_hidden_dims, n_classes)
+            nn.Linear(hidden_channels[-1], n_classes)
         )
 
-        if self.qat:
-            self.quant = torch.quantization.QuantStub()
-            self.dequant = torch.quantization.DeQuantStub()
+        self.quant = torch.quantization.QuantStub() if qat else nn.Identity()
+        self.dequant = torch.quantization.DeQuantStub() if qat else nn.Identity()
 
     def forward(self, x):
-        if self.qat:
-            x = self.quant(x)
+        x = self.quant(x)
 
         for conv in self.sep_conv_blocks:
             x = conv(x)
-        x = self.pool(x)
+
+        # Pooling
+        b, c, h, w = x.shape
+        x = x.reshape(b, c, h * w)
+        x = x.max(dim=2).values
         x = self.classifier(x)
 
-        if self.qat:
-            x = self.dequant(x)
+        x = self.dequant(x)
 
         return x
 
