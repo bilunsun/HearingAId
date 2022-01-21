@@ -11,7 +11,7 @@ TO_MELSPECTROGRAM = torchaudio.transforms.MelSpectrogram(sample_rate=TARGET_SAMP
 
 # Raspberry Pi 4 quantized engine
 import platform
-if platform.system() == 'Linux':
+if platform.system() == 'Linux' and not torch.cuda.is_available():
     torch.backends.quantized.engine = 'qnnpack'
 
 model = Model.load_from_checkpoint("src/checkpoints/worthy-monkey-70.ckpt")
