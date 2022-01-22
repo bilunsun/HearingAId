@@ -7,6 +7,7 @@ from pytorch_lightning.callbacks import LearningRateMonitor, ModelCheckpoint
 from pytorch_lightning.loggers import WandbLogger
 from torchvision import models
 from torch import nn
+from tqdm.auto import tqdm
 
 from lib import AudioDataModule, VanillaCNN, MobileNetV3Backbone, convnext_tiny, CustomCNN
 
@@ -49,20 +50,14 @@ class Model(pl.LightningModule):
     def add_model_specific_args(parent_parser):
         parser = argparse.ArgumentParser(parents=[parent_parser], add_help=False)
 
-        parser.add_argument("--width", type=int, default=128)
-        parser.add_argument("--height", type=int, default=87)
+        parser.add_argument("--width", type=int, default=None)
+        parser.add_argument("--height", type=int, default=None)
         parser.add_argument("--hidden_channels", type=int, nargs="+", default=[64, 256, 512])
         parser.add_argument("--classifier_hidden_dims", type=int, default=256)
         parser.add_argument("--n_classes", type=int, default=10)
 
         parser.add_argument("--qat", action="store_true")
         parser.add_argument("--lr", type=float, default=3e-4)
-        parser.add_argument("--scheduler", type=str, choices=[None, "cosine", "plateau"], default=None)
-        parser.add_argument("--min_lr", type=float, default=1e-7)
-        parser.add_argument("--plateau_factor", type=float, default=0.1)
-        parser.add_argument("--plateau_patience", type=int, default=10)
-        parser.add_argument("--plateau_cooldown", type=int, default=0)
-        parser.add_argument("--load_weights_from_ckpt", type=str, default=None)
 
         return parser
 
@@ -84,7 +79,6 @@ class Model(pl.LightningModule):
         # QUANTIZATION
         if self.hparams.qat:
             self.model.qconfig = torch.quantization.get_default_qat_qconfig("qnnpack")
-            # self.model = torch.quantization.fuse_modules(self.model, [["depthwise", "pointwise", "activation"]])
             self.model = torch.quantization.prepare_qat(self.model)
 
         if self.hparams.load_weights_from_ckpt:
@@ -94,22 +88,6 @@ class Model(pl.LightningModule):
 
         self.optimizer = torch.optim.Adam(self.model.parameters(), lr=self.hparams.lr)
 
-        if self.hparams.scheduler is None:
-            self.scheduler = None
-        elif self.hparams.scheduler == "cosine":
-            self.scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
-                self.optimizer, T_max=self.hparams.max_epochs, eta_min=self.hparams.min_lr
-            )
-        else:  # Choices are [None, "cosine", "plateau"] from argparse
-            self.scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
-                self.optimizer,
-                factor=self.hparams.plateau_factor,
-                patience=self.hparams.plateau_patience,
-                min_lr=self.hparams.min_lr,
-                cooldown=self.hparams.plateau_cooldown,
-            )
-
-        # self.scaler = Scaler((1, self.hparams.height, self.hparams.width))
         self.scaler = Scaler(size=())
 
         # For confusion matrix
@@ -121,7 +99,6 @@ class Model(pl.LightningModule):
 
     def training_step(self, batch, _):
         x, y = batch
-        # x = (x - 17.2) / 252
         x = self.scaler.transform(x)
 
         pred = self(x)
@@ -134,7 +111,6 @@ class Model(pl.LightningModule):
 
     def validation_step(self, batch, _):
         x, y = batch
-        # x = (x - 17.2) / 252
         x = self.scaler.transform(x)
 
         pred = self(x)
@@ -142,8 +118,6 @@ class Model(pl.LightningModule):
         self.log("val_loss", loss, prog_bar=True, logger=True)
 
         y_hat = torch.argmax(pred, dim=1)
-        accuracy = (y == y_hat).float().mean()  # Need to cast Long tensor to Float
-        self.log("val_accuracy", accuracy, prog_bar=True, logger=True)
 
         self._y_hat.append(y_hat)
         self._y.append(y)
@@ -156,7 +130,11 @@ class Model(pl.LightningModule):
         return [self.optimizer], [scheduler_dict]
 
     def on_fit_start(self):
-        all_x, _ = self.trainer.datamodule.train_dataset[:]
+        all_x = []
+        for x, _ in tqdm(self.trainer.datamodule.train_dataloader()):
+            all_x.append(x)
+        all_x = torch.cat(all_x)
+
         self.scaler.fit(all_x)
         self.scaler.to("cuda")
         print("mean.shape", self.scaler.mean.shape, "mean", self.scaler.mean)
@@ -166,7 +144,6 @@ class Model(pl.LightningModule):
 
         self.logger.log_hyperparams(
             {
-                "flattened_dims": getattr(self.model, "flattened_dims", -1),
                 "train_set_size": len(self.trainer.datamodule.train_dataset),
                 "val_set_size": len(self.trainer.datamodule.val_dataset),
                 "class_names": self.class_names,
@@ -180,8 +157,8 @@ class Model(pl.LightningModule):
         y = torch.cat(self._y).cpu().numpy()
         y_hat = torch.cat(self._y_hat).cpu().numpy()
 
-        # accuracy = (y == y_hat).mean()  # Need to cast Long tensor to Float
-        # self.log("val_accuracy", accuracy, prog_bar=True, logger=True)
+        accuracy = (y == y_hat).mean()  # Need to cast Long tensor to Float
+        self.log("val_accuracy", accuracy, prog_bar=True, logger=True)
 
         # import pdb; pdb.set_trace()
         self.logger.experiment.log(
@@ -249,9 +226,9 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
 
     parser.add_argument("--batch_size", type=int, default=128)
-    parser.add_argument("--train_ratio", type=int, default=0.9)
+    parser.add_argument("--train_ratio", type=int, default=0.95)
     parser.add_argument("--shuffle", type=bool, default=True)
-    parser.add_argument("--num_workers", type=int, default=4)
+    parser.add_argument("--num_workers", type=int, default=8)
     parser.add_argument("--data_dir", type=str, default="data")
     parser.add_argument("--checkpoints_dir", type=str, default="checkpoints")
     parser.add_argument("--max_epochs", type=int, default=1_000)
