@@ -14,7 +14,7 @@ import platform
 if platform.system() == 'Linux' and not torch.cuda.is_available():
     torch.backends.quantized.engine = 'qnnpack'
 
-model = Model.load_from_checkpoint("src/checkpoints/worthy-monkey-70.ckpt")
+model = Model.load_from_checkpoint("src/checkpoints/autumn-wind-80.ckpt")
 model, scaler = model.model, model.scaler
 
 # Quantization aware training
@@ -51,10 +51,22 @@ def preprocess(t_data, sample_rate, resample):
 t_data, sample_rate = torchaudio.load("data/UrbanSound8K/audio/fold1/7061-6-0-0.wav")
 resample = torchaudio.transforms.Resample(sample_rate, TARGET_SAMPLE_RATE)
 
-for i in range(10):
+preprocess_times = []
+infer_times = []
+
+for i in range(100):
     start = time.time()
     x = preprocess(t_data, sample_rate, resample)
     x = scaler.transform(x)
-    model(x)
-    elapsed = time.time() - start
-    print(elapsed)
+    mid = time.time()
+    model_int8(x)
+    end = time.time()
+    infer_times.append(end - mid)
+    preprocess_times.append(mid - start)
+
+avg_preprocess = sum(preprocess_times) / len(preprocess_times)
+avg_infer = sum(infer_times) / len(infer_times)
+
+print(f'Average Preprocessing Time: {avg_preprocess * 1000:.3f} ms')
+print(f'Average Inference Time: {avg_infer * 1000:.3f} ms')
+print(f'Average Total Time: {(avg_infer + avg_preprocess) * 1000:.3f} ms')
