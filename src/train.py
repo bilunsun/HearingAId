@@ -3,13 +3,12 @@ import pytorch_lightning as pl
 import torch
 import torch.nn.functional as F
 import wandb
-from pytorch_lightning.callbacks import LearningRateMonitor, ModelCheckpoint
+from pytorch_lightning.callbacks import ModelCheckpoint
 from pytorch_lightning.loggers import WandbLogger
-from torchvision import models
 from torch import nn
 from tqdm.auto import tqdm
 
-from lib import AudioDataModule, VanillaCNN, MobileNetV3Backbone, convnext_tiny, CustomCNN
+from lib import AudioDataModule, MobileNetV3Backbone, convnext_tiny, CustomCNN
 
 
 class Scaler(nn.Module):
@@ -81,11 +80,6 @@ class Model(pl.LightningModule):
             self.model.qconfig = torch.quantization.get_default_qat_qconfig("qnnpack")
             self.model = torch.quantization.prepare_qat(self.model)
 
-        if self.hparams.load_weights_from_ckpt:
-            self.model = Model.load_from_checkpoint(
-                self.hparams.load_weights_from_ckpt, load_weights_from_ckpt=None
-            ).model
-
         self.optimizer = torch.optim.Adam(self.model.parameters(), lr=self.hparams.lr)
 
         self.scaler = Scaler(size=())
@@ -123,11 +117,7 @@ class Model(pl.LightningModule):
         self._y.append(y)
 
     def configure_optimizers(self):
-        if self.scheduler is None:
-            return self.optimizer
-
-        scheduler_dict = {"scheduler": self.scheduler, "interval": "epoch", "monitor": "val_loss"}
-        return [self.optimizer], [scheduler_dict]
+        return self.optimizer
 
     def on_fit_start(self):
         all_x = []
@@ -209,7 +199,6 @@ def main(args):
     )
 
     callbacks = [checkpoint_callback]
-    callbacks += [LearningRateMonitor()] if configs["scheduler"] else []
 
     trainer = pl.Trainer(
         gpus=1 if torch.cuda.is_available() else 0,
