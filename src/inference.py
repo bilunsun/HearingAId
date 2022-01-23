@@ -11,8 +11,8 @@ N_SAMPLES = 22050
 TO_MELSPECTROGRAM = torchaudio.transforms.MelSpectrogram(sample_rate=TARGET_SAMPLE_RATE, n_fft=1024, hop_length=512, n_mels=64)
 
 
-# Raspberry Pi 4 quantized engine
-if platform.system() == 'Linux' and not torch.cuda.is_available():
+# Raspberry Pi 4/Jetson Nano quantized engine
+if platform.system() == 'Linux':
     torch.backends.quantized.engine = 'qnnpack'
 
 
