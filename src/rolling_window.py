@@ -1,4 +1,3 @@
-import atexit
 import numpy as np
 import pyaudio
 import time
@@ -56,7 +55,16 @@ data_thread = Thread(target=yield_data, args=(dq, lock, exit_signal,))
 def main():
     data_thread.start()
 
-    for _ in range(100):
+    # Countdown
+    print("Starting in:")
+    for i in range(3, 0, -1):
+        print(i)
+        time.sleep(1)
+    print("Recording...")
+
+    # Recording
+    all_data = []
+    for _ in range(10):
         raw_data = list(dq)  # The 'lock' object does not seem to be necessary for reading
 
         if len(raw_data) < buffer_len:
@@ -64,9 +72,19 @@ def main():
             continue
 
         # visualize(raw_data)
-        curr_time = time.time()
-        print(curr_time % 1, "OK")
+        # curr_time = time.time()
+        # print(curr_time % 1, "OK")
+        # time.sleep(0.1)
+        all_data.append(raw_data)
         time.sleep(0.1)
+    print("DONE.")
+
+    # Visualizing
+    for data in all_data:
+        visualize(data)
+
+    exit_signal.set()
+    data_thread.join()
 
 
 if __name__ == "__main__":
