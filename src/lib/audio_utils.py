@@ -5,7 +5,8 @@ try:
     import librosa
 except ImportError:
     librosa = False
-    print('Module librosa not found. Proceeding without.')
+    print('Module librosa not found. Proceeding without.\n' +
+          'If you are on the Jetson Nano/Raspberry Pi, ignore this warning.')
 
 import matplotlib.pyplot as plt
 import torch
