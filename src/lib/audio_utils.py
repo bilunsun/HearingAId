@@ -74,7 +74,12 @@ def plot_melspectrogram(waveform, sample_rate, n_fft=1024, hop_length=512, win_l
         n_mels=n_mels,
         norm=norm
     )
-    spectrogram = mel_spectrogram(waveform).squeeze(0)  # Remove batch dimension
+    spectrogram = mel_spectrogram(waveform)  # Remove batch dimension
+    if len(spectrogram.shape) == 4:
+        spectrogram = spectrogram.squeeze(0)
+
+    assert len(spectrogram.shape) == 3, "Must be 3D"
+
     # spectrogram = spectrogram.permute(1, 2, 0)
     spectrogram = spectrogram.mean(dim=0)
     spectrogram /= spectrogram.max()
