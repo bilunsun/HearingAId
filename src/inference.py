@@ -14,7 +14,7 @@ import platform
 if platform.system() == 'Linux' and not torch.cuda.is_available():
     torch.backends.quantized.engine = 'qnnpack'
 
-model = Model.load_from_checkpoint("src/checkpoints/worthy-monkey-70.ckpt")
+model = Model.load_from_checkpoint("src/checkpoints/autumn-wind-80.ckpt")
 model, scaler = model.model, model.scaler
 
 # Quantization aware training
