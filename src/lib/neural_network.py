@@ -1,6 +1,5 @@
 import torch
 import torch.nn.functional as F
-from einops.layers.torch import Reduce
 from torch import nn
 from torchvision import models
 from typing import Tuple, List
