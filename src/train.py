@@ -8,7 +8,36 @@ from pytorch_lightning.loggers import WandbLogger
 from torch import nn
 from tqdm.auto import tqdm
 
-from lib import AudioDataModule, MobileNetV3Backbone, convnext_tiny, CustomCNN
+from lib import AudioDataModule, MobileNetV3Backbone, convnext_tiny, CustomCNN, EnvNet
+
+
+# class Scaler(nn.Module):
+#     """Basic log scaler class"""
+
+#     def __init__(self, size: int):
+#         super().__init__()
+
+#         self.register_buffer("mean", torch.zeros(size))
+#         self.register_buffer("std", torch.ones(size))
+#         self.device = torch.device("cpu")
+
+#     def fit(self, x):
+#         x = torch.clip(x, min=1e-8)
+#         x = torch.log10(x).flatten()
+#         self.mean = torch.mean(x, dim=0)
+#         self.std = torch.std(x, dim=0)
+
+#     def transform(self, x):
+#         x = torch.clip(x, min=1e-8)
+#         return (torch.log10(x) - self.mean) / self.std
+
+#     def to(self, device):
+#         self.mean = self.mean.to(device)
+#         self.std = self.std.to(device)
+#         self.device = device
+
+#     def __repr__(self):
+#         return f"mean: {self.mean}\tstd: {self.std}"
 
 
 class Scaler(nn.Module):
@@ -22,14 +51,11 @@ class Scaler(nn.Module):
         self.device = torch.device("cpu")
 
     def fit(self, x):
-        x = torch.clip(x, min=1e-8)
-        x = torch.log10(x).flatten()
-        self.mean = torch.mean(x, dim=0)
-        self.std = torch.std(x, dim=0)
+        self.mean = torch.mean(x.view(-1))
+        self.std = torch.std(x.view(-1))
 
     def transform(self, x):
-        x = torch.clip(x, min=1e-8)
-        return (torch.log10(x) - self.mean) / self.std
+        return (x - self.mean) / self.std
 
     def to(self, device):
         self.mean = self.mean.to(device)
@@ -55,8 +81,10 @@ class Model(pl.LightningModule):
         parser.add_argument("--classifier_hidden_dims", type=int, default=256)
         parser.add_argument("--n_classes", type=int, default=10)
 
+        parser.add_argument("--transfer_ckpt", type=str, default=None)
+
         parser.add_argument("--qat", action="store_true")
-        parser.add_argument("--lr", type=float, default=3e-4)
+        parser.add_argument("--lr", type=float, default=5e-4)
 
         return parser
 
@@ -68,12 +96,25 @@ class Model(pl.LightningModule):
         # self.model = MobileNetV3Backbone(n_classes=self.hparams.n_classes)
         # self.model = convnext_tiny(in_chans=1, num_classes=self.hparams.n_classes)
         # self.model = VanillaCNN(width=self.hparams.width, height=self.hparams.height, n_classes=self.hparams.n_classes)
-        self.model = CustomCNN(
-            n_classes=self.hparams.n_classes,
-            hidden_channels=self.hparams.hidden_channels,
-            classifier_hidden_dims=self.hparams.classifier_hidden_dims,
-            qat=self.hparams.qat
-        )
+
+        # Create a new model if not transfer learning
+        # if self.hparams.transfer_ckpt is None:
+        #     self.model = CustomCNN(
+        #         n_classes=self.hparams.n_classes,
+        #         hidden_channels=self.hparams.hidden_channels,
+        #         classifier_hidden_dims=self.hparams.classifier_hidden_dims,
+        #         qat=self.hparams.qat
+        #     )
+        # else:
+        #     print("TRANSFERRING")
+        #     self.model = self.load_from_checkpoint(self.hparams.transfer_ckpt, transfer_ckpt=None).model
+        #     transfer_n_classes = self.model.classifier[-1].out_features
+        #     if transfer_n_classes != self.hparams.n_classes:
+        #         print("CUSTOM CLASSIFIER")
+        #         self.model.classifier = nn.Sequential(
+        #             nn.Linear(self.model.classifier[0].in_features, self.hparams.n_classes)
+        #         )
+        self.model = EnvNet(n_classes=self.hparams.n_classes)
 
         # QUANTIZATION
         if self.hparams.qat:
@@ -150,10 +191,10 @@ class Model(pl.LightningModule):
         accuracy = (y == y_hat).mean()  # Need to cast Long tensor to Float
         self.log("val_accuracy", accuracy, prog_bar=True, logger=True)
 
-        # import pdb; pdb.set_trace()
-        self.logger.experiment.log(
-            {"Confusion Matrix": wandb.plot.confusion_matrix(y_true=y, preds=y_hat, class_names=self.class_names,)}
-        )
+        # # import pdb; pdb.set_trace()
+        # self.logger.experiment.log(
+        #     {"Confusion Matrix": wandb.plot.confusion_matrix(y_true=y, preds=y_hat, class_names=self.class_names,)}
+        # )
 
         # Reset
         self._y = []
@@ -214,6 +255,7 @@ def main(args):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
 
+    parser.add_argument("--dataset_name", type=str, default="urbansound8k")
     parser.add_argument("--batch_size", type=int, default=128)
     parser.add_argument("--train_ratio", type=int, default=0.95)
     parser.add_argument("--shuffle", type=bool, default=True)

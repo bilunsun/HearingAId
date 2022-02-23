@@ -1,5 +1,6 @@
 import csv
 import os
+import pandas as pd
 import pytorch_lightning as pl
 import torch
 import torch.nn.functional as F
@@ -46,8 +47,9 @@ def preprocess(x, sample_rate):
         len_missing = N_SAMPLES - len_data
         x = F.pad(x, (0, len_missing))
 
-    # Melspectrogram
-    x = mel_spectrogram(x)
+    # # Melspectrogram
+    # x = mel_spectrogram(x)
+    x = x.unsqueeze(1)
 
     return x
 
@@ -103,8 +105,47 @@ class UrbanSound8KDataset(Dataset):
         return self.CLASS_ID_TO_NAME
 
 
+class ESC50Dataset(Dataset):
+
+    def __init__(self, root: str = os.path.join("data", "ESC-50-master")):
+        super().__init__()
+
+        # Double check the user has passed a valid dataset path
+        if os.path.isdir(root):
+            self.root = root
+        else:
+            raise OSError(f"{root} is not a valid folder.")
+
+        self.audio_dir = os.path.join(self.root, "audio")
+        self.meta_path = os.path.join(self.root, "meta", "esc50.csv")
+
+        df = pd.read_csv(self.meta_path)
+
+        self.file_paths = [os.path.join(self.audio_dir, fname) for fname in df["filename"].tolist()]
+        self.class_ids = df["target"].tolist()
+        self.n_folds = df["fold"].unique().tolist()
+        self.CLASS_ID_TO_NAME = dict(set(zip(df["target"], df["category"])))
+
+    def __getitem__(self, index):
+        x, sample_rate = torchaudio.load(self.file_paths[index])
+        x = preprocess(x, sample_rate)
+        y = self.class_ids[index]
+        return x, y
+
+    def __len__(self):
+        return len(self.file_paths)
+
+    @property
+    def n_classes(self) -> int:
+        return len(self.CLASS_ID_TO_NAME)
+
+    @property
+    def class_names(self):
+        return self.CLASS_ID_TO_NAME
+
+
 class AudioDataModule(pl.LightningDataModule):
-    def __init__(self, batch_size: int, train_ratio: float, shuffle: bool = True, num_workers: int = 0, **kwargs):
+    def __init__(self, dataset_name: str, batch_size: int, train_ratio: float, shuffle: bool = True, num_workers: int = 0, **kwargs):
         super().__init__()
 
         assert 0 < train_ratio < 1
@@ -115,8 +156,8 @@ class AudioDataModule(pl.LightningDataModule):
         self.num_workers = num_workers
         self.extra_kwargs = {"prefetch_factor": 4, "persistent_workers": True} if self.num_workers > 0 else {}
 
-        dataset = UrbanSound8KDataset()
-        print(f"There are {len(dataset)} samples in the dataset.")
+        dataset = UrbanSound8KDataset() if dataset_name == "urbansound8k" else ESC50Dataset()
+        print(f"There are {len(dataset)} samples in the {dataset_name} dataset.")
         signal, _ = dataset[1]
 
         self.height = signal.size(-2)
@@ -125,6 +166,7 @@ class AudioDataModule(pl.LightningDataModule):
         self.n_classes = dataset.n_classes
         self.class_names = dataset.class_names
 
+        # TODO: k-folds validation
         train_len = int(len(dataset) * self.train_ratio)
         val_len = len(dataset) - train_len
         self.train_dataset, self.val_dataset = random_split(dataset, [train_len, val_len])
@@ -151,11 +193,13 @@ class AudioDataModule(pl.LightningDataModule):
 
 
 def test():
-    dm = AudioDataModule(batch_size=32, train_ratio=0.9, shuffle=False, num_workers=0)
-    for x, y in dm.train_dataloader():
-        print(x.shape)
+    dm = AudioDataModule(dataset_name="esc50", batch_size=32, train_ratio=0.9, shuffle=False, num_workers=0)
+    for i, (x, y) in enumerate(dm.train_dataloader()):
+        print(x.shape, x.mean(), x.std())
         print(y.shape)
-        exit()
+
+        if i == 5:
+            exit()
 
 
 if __name__ == "__main__":
