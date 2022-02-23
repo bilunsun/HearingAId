@@ -24,7 +24,9 @@ To install PyTorch from scratch, you will need a minimum of 5.5 GB of RAM (swap 
 
 ```
 sudo apt-get update && sudo apt-get upgrade
-sudo apt-get install pyenv
+
+# Install pyenv
+curl https://pyenv.run | bash
 
 # install stuff for the recommended build environment (debian)
 sudo apt-get update; sudo apt-get install make build-essential libssl-dev zlib1g-dev \
