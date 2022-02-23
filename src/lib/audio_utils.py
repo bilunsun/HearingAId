@@ -1,9 +1,16 @@
 # Mostly taken from https://pytorch.org/tutorials/beginner/audio_preprocessing_tutorial.html
 import argparse
-import librosa
+
+try:
+    import librosa
+except ImportError:
+    librosa = False
+    print('Module librosa not found. Proceeding without.')
+
 import matplotlib.pyplot as plt
 import torch
 import torchaudio
+import numpy as np
 
 
 def plot_waveform(waveform, sample_rate, title="Waveform", xlim=None, ylim=None):
@@ -56,7 +63,10 @@ def plot_spectrogram(spectrogram, title=None, ylabel="Frequency bin", aspect="au
     axs.set_title(title or "Spectrogram (db)")
     axs.set_ylabel(ylabel)
     axs.set_xlabel("frame")
-    im = axs.imshow(librosa.power_to_db(spectrogram), origin="lower", aspect=aspect)
+    if librosa:
+        im = axs.imshow(librosa.power_to_db(spectrogram), origin="lower", aspect=aspect)
+    else:
+        im = axs.imshow(power_to_db(spectrogram), origin="lower", aspect=aspect)
 
     if xmax:
         axs.set_xlim((0, xmax))
@@ -166,6 +176,19 @@ def print_stats(waveform, sample_rate=None, src=None):
     print()
     print(waveform)
     print()
+
+
+def power_to_db(S, *, ref=1.0, amin=1e-10, top_db=80.0):
+    S = np.asarray(S)
+
+    magnitude = S
+    ref_value = np.abs(ref)
+
+    log_spec = 10.0 * np.log10(np.maximum(amin, magnitude))
+    log_spec -= 10.0 * np.log10(np.maximum(amin, ref_value))
+    log_spec = np.maximum(log_spec, log_spec.max() - top_db)
+
+    return log_spec
 
 
 def main(args):
