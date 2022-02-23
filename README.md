@@ -11,6 +11,11 @@ To install PyAudio, run:
 pip install pipwin
 pipwin install pyaudio
 ```
+On Linux, to install PyAudio:
+```
+sudo apt-get install portaudio19-dev
+pip install pyaudio
+```
 
 ## Raspberry Pi 4 Setup
 
