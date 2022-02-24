@@ -8,7 +8,8 @@ from pytorch_lightning.loggers import WandbLogger
 from torch import nn
 from tqdm.auto import tqdm
 
-from lib import AudioDataModule, MobileNetV3Backbone, convnext_tiny, CustomCNN, EnvNet
+from lib import AudioDataModule, CustomCNN, EnvNet
+from pretrain import PretrainModel
 
 
 # class Scaler(nn.Module):
@@ -47,12 +48,13 @@ class Scaler(nn.Module):
         super().__init__()
 
         self.register_buffer("mean", torch.zeros(size))
-        self.register_buffer("std", torch.ones(size))
+        self.register_buffer("std", torch.ones(size) / 10)
         self.device = torch.device("cpu")
 
     def fit(self, x):
-        self.mean = torch.mean(x.view(-1))
-        self.std = torch.std(x.view(-1))
+        mask = x != 0
+        self.mean = torch.mean(x[mask].view(-1))
+        self.std = torch.std(x[mask].view(-1))
 
     def transform(self, x):
         return (x - self.mean) / self.std
@@ -82,6 +84,7 @@ class Model(pl.LightningModule):
         parser.add_argument("--n_classes", type=int, default=10)
 
         parser.add_argument("--transfer_ckpt", type=str, default=None)
+        parser.add_argument("--pretrain_ckpt", type=str, default=None)
 
         parser.add_argument("--qat", action="store_true")
         parser.add_argument("--lr", type=float, default=5e-4)
@@ -114,7 +117,16 @@ class Model(pl.LightningModule):
         #         self.model.classifier = nn.Sequential(
         #             nn.Linear(self.model.classifier[0].in_features, self.hparams.n_classes)
         #         )
-        self.model = EnvNet(n_classes=self.hparams.n_classes)
+        self.scaler = Scaler(size=())
+        if self.hparams.pretrain_ckpt is not None:
+            ckpt = PretrainModel.load_from_checkpoint(self.hparams.pretrain_ckpt)
+            self.scaler = ckpt.scaler
+            self.model = ckpt.model
+            if self.model.classifier[-1].out_features != self.hparams.n_classes:
+                print("CUSTOMM")
+                self.model.classifier[-1] = nn.Linear(self.model.classifier[-1].in_features, self.hparams.n_classes)
+        else:
+            self.model = EnvNet(n_classes=self.hparams.n_classes)
 
         # QUANTIZATION
         if self.hparams.qat:
@@ -122,8 +134,6 @@ class Model(pl.LightningModule):
             self.model = torch.quantization.prepare_qat(self.model)
 
         self.optimizer = torch.optim.Adam(self.model.parameters(), lr=self.hparams.lr)
-
-        self.scaler = Scaler(size=())
 
         # For confusion matrix
         self._y_hat = []

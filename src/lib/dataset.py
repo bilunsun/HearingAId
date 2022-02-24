@@ -70,13 +70,15 @@ class UrbanSound8KDataset(Dataset):
 
     NAME_TO_CLASS_ID = {name: i for i, name in enumerate(CLASS_ID_TO_NAME)}
 
-    def __init__(self, root: str = os.path.join("data", "UrbanSound8K")) -> None:
+    def __init__(self, root: str = os.path.join("data", "UrbanSound8K"), pretraining: bool = False) -> None:
 
         # Double check the user has passed a valid dataset path
         if os.path.isdir(root):
             self.root = root
         else:
             raise OSError(f"{root} is not a valid folder.")
+
+        self.pretraining = pretraining
 
         # Open the metadata file
         with open(os.path.join(self.root, "metadata", "UrbanSound8K.csv"), "r", newline="") as f:
@@ -88,10 +90,37 @@ class UrbanSound8KDataset(Dataset):
         self.class_ids = torch.LongTensor([self.NAME_TO_CLASS_ID[m[7]] for m in metadata])
 
     def __getitem__(self, index):
+        return self._regular_getitem(index) if not self.pretraining else self._pretraining_getitem(index)
+
+    def _regular_getitem(self, index):
         x, sample_rate = torchaudio.load(self.file_paths[index])
         x = preprocess(x, sample_rate)
         y = self.class_ids[index]
         return x, y
+
+    def _pretraining_mix(self, x1, x2, y1, y2):
+        r = random.uniform(0, 1)
+
+        numerator = r * x1 + (1 - r) * x2
+        denominator = (r ** 2 + (1 - r) ** 2)**0.5
+
+        x_mixed = numerator / denominator
+        y_mixed = r * y1 + (1 - r) * y2
+
+        return x_mixed, y_mixed
+
+    def _pretraining_getitem(self, _):
+        index1, index2 = random.choices(range(len(self)), k=2)
+
+        x1, y1 = self._regular_getitem(index1)
+        y1 = F.one_hot(y1, num_classes=self.n_classes)
+
+        x2, y2 = self._regular_getitem(index2)
+        y2 = F.one_hot(y2, num_classes=self.n_classes)
+
+        x_mixed, y_mixed = self._pretraining_mix(x1, x2, y1, y2)
+
+        return x_mixed, y_mixed
 
     def __len__(self):
         return len(self.file_paths)
@@ -106,8 +135,7 @@ class UrbanSound8KDataset(Dataset):
 
 
 class ESC50Dataset(Dataset):
-
-    def __init__(self, root: str = os.path.join("data", "ESC-50-master")):
+    def __init__(self, root: str = os.path.join("data", "ESC-50-master"), pretraining: bool = False):
         super().__init__()
 
         # Double check the user has passed a valid dataset path
@@ -115,6 +143,8 @@ class ESC50Dataset(Dataset):
             self.root = root
         else:
             raise OSError(f"{root} is not a valid folder.")
+
+        self.pretraining = pretraining
 
         self.audio_dir = os.path.join(self.root, "audio")
         self.meta_path = os.path.join(self.root, "meta", "esc50.csv")
@@ -145,7 +175,16 @@ class ESC50Dataset(Dataset):
 
 
 class AudioDataModule(pl.LightningDataModule):
-    def __init__(self, dataset_name: str, batch_size: int, train_ratio: float, shuffle: bool = True, num_workers: int = 0, **kwargs):
+    def __init__(
+        self,
+        dataset_name: str,
+        batch_size: int,
+        train_ratio: float,
+        shuffle: bool = True,
+        num_workers: int = 0,
+        pretraining: bool = False,
+        **kwargs,
+    ):
         super().__init__()
 
         assert 0 < train_ratio < 1
@@ -154,9 +193,14 @@ class AudioDataModule(pl.LightningDataModule):
         self.train_ratio = train_ratio
         self.shuffle = shuffle
         self.num_workers = num_workers
+        self.pretraining = pretraining
         self.extra_kwargs = {"prefetch_factor": 4, "persistent_workers": True} if self.num_workers > 0 else {}
 
-        dataset = UrbanSound8KDataset() if dataset_name == "urbansound8k" else ESC50Dataset()
+        dataset = (
+            UrbanSound8KDataset(pretraining=pretraining)
+            if dataset_name == "urbansound8k"
+            else ESC50Dataset(pretraining=pretraining)
+        )
         print(f"There are {len(dataset)} samples in the {dataset_name} dataset.")
         signal, _ = dataset[1]
 
@@ -193,10 +237,12 @@ class AudioDataModule(pl.LightningDataModule):
 
 
 def test():
-    dm = AudioDataModule(dataset_name="esc50", batch_size=32, train_ratio=0.9, shuffle=False, num_workers=0)
+    dm = AudioDataModule(dataset_name="urbansound8k", batch_size=32, train_ratio=0.9, shuffle=False, num_workers=0, pretraining=True)
     for i, (x, y) in enumerate(dm.train_dataloader()):
         print(x.shape, x.mean(), x.std())
         print(y.shape)
+
+        import pdb; pdb.set_trace()
 
         if i == 5:
             exit()
