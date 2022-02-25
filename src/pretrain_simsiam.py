@@ -18,7 +18,7 @@ class Scaler(nn.Module):
         super().__init__()
 
         self.register_buffer("mean", torch.zeros(size))
-        self.register_buffer("std", torch.ones(size) / 10)
+        self.register_buffer("std", torch.ones(size) / 5)
         self.device = torch.device("cpu")
 
     def fit(self, x):
@@ -87,7 +87,7 @@ class PretrainSimSiam(pl.LightningModule):
 
         # Predictor
         self.h = nn.Sequential(
-            nn.Linear(self.latent_dim, self.hparams.hidden_dim),
+            nn.Linear(self.hparams.hidden_dim, self.hparams.hidden_dim),
             nn.BatchNorm1d(self.hparams.hidden_dim),
             nn.ReLU(inplace=True),
             nn.Linear(self.hparams.hidden_dim, self.hparams.out_dim)
@@ -107,11 +107,22 @@ class PretrainSimSiam(pl.LightningModule):
     def training_step(self, batch, _):
         x1, x2 = batch
         z1, z2 = self.f(x1), self.f(x2)
-        p1, p2 = self.h(x1), self.h(x2)
+        p1, p2 = self.h(z1), self.h(z2)
 
         loss = self.criterion(p1, z2) / 2 + self.criterion(p2, z1) / 2
 
         self.log("train_loss", loss, prog_bar=True, logger=True)
+
+        return loss
+
+    def validation_step(self, batch, _):
+        x1, x2 = batch
+        z1, z2 = self.f(x1), self.f(x2)
+        p1, p2 = self.h(z1), self.h(z2)
+
+        loss = self.criterion(p1, z2) / 2 + self.criterion(p2, z1) / 2
+
+        self.log("val_loss", loss, prog_bar=True, logger=True)
 
         return loss
 
@@ -120,10 +131,11 @@ class PretrainSimSiam(pl.LightningModule):
 
     def on_fit_start(self):
         all_x = []
-        for i, (x, _) in enumerate(tqdm(self.trainer.datamodule.train_dataloader())):
-            if i == 10:
+        for i, (x1, x2) in enumerate(tqdm(self.trainer.datamodule.train_dataloader())):
+            if i == 5:
                 break
-            all_x.append(x)
+            all_x.append(x1)
+            all_x.append(x2)
         all_x = torch.cat(all_x)
 
         self.scaler.fit(all_x)
@@ -195,7 +207,7 @@ def main(args):
         check_val_every_n_epoch=configs["check_val_every_n_epoch"],
     )
 
-    trainer.fit(model, datamodule=audio_datamodule)
+    trainer.fit(model, datamodule=audio_datamodule, ckpt_path="checkpoints/scarlet-leaf-119-v1.ckpt")
 
 
 if __name__ == "__main__":

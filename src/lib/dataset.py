@@ -23,8 +23,8 @@ mel_spectrogram = torchaudio.transforms.MelSpectrogram(
 
 
 def preprocess(x, sample_rate, target_sample_rate: int = TARGET_SAMPLE_RATE, n_samples: int = N_SAMPLES):
-    # Normalize
-    x = x / 32768
+    # # Normalize
+    # x = x / 32768
 
     # Resample
     if sample_rate != target_sample_rate:
@@ -76,7 +76,7 @@ class StandardDataset(Dataset):
         self.getitem_method = self.GETITEM_METHOD[pretraining]
 
     def __getitem__(self, index):
-        return self._regular_getitem(index) if not self.pretraining else self._mix_getitem(index)
+        return self.getitem_method(index)
 
     def _scale(self, x):
         """Slow down or speed up"""
@@ -91,10 +91,8 @@ class StandardDataset(Dataset):
         return x
 
     def _regular_getitem(self, index: int, scale_augment: bool = True, gain_augment: bool = True):
-        try:
-            x, sample_rate = torchaudio.load(self.file_paths[index], normalize=False)
-        except Exception as e:
-            import pdb; pdb.set_trace()
+        x, sample_rate = torchaudio.load(self.file_paths[index], normalize=True)  # TODO: normalize=False
+
         # Reshape
         if len(x.shape) == 1:
             x = x.unsqueeze(1)
@@ -229,17 +227,13 @@ class AudioDataModule(pl.LightningDataModule):
         batch_size: int,
         shuffle: bool = True,
         num_workers: int = 0,
-        train_ratio: float = 0.9,
-        pretraining: bool = False,
+        pretraining: str = None,
         folds: List[int] = None,
         **kwargs,
     ):
         super().__init__()
 
-        assert 0 < train_ratio < 1
-
         self.batch_size = batch_size
-        self.train_ratio = train_ratio
         self.shuffle = shuffle
         self.num_workers = num_workers
         self.pretraining = pretraining
@@ -286,7 +280,7 @@ class AudioDataModule(pl.LightningDataModule):
 
 def test():
     dm = AudioDataModule(
-        dataset_name="urbansound8k", batch_size=32, train_ratio=0.9, shuffle=False, num_workers=0, pretraining=None
+        dataset_name="urbansound8k", batch_size=32, train_ratio=0.9, shuffle=False, num_workers=0, pretraining="simsiam"
     )
     for i, (x, y) in enumerate(dm.train_dataloader()):
         print(x.shape, x.mean(), x.std())
