@@ -31,9 +31,9 @@ class EnvNet(nn.Module):
         # self.pool10 = nn.MaxPool2d(kernel_size=(1, 2), stride=(1, 2))
 
         self.classifier = nn.Sequential(
-            nn.Linear(1280, 512),
+            nn.Linear(10240, 1024),
             nn.ReLU(inplace=True),
-            nn.Linear(512, n_classes),
+            nn.Linear(1024, n_classes),
         )
 
     def forward(self, x):
@@ -132,7 +132,7 @@ class CustomCNN(nn.Module):
         return x
 
 
-if __name__ == "__main__":
+def test_custom_cnn():
     model = CustomCNN(height=64, width=44)
 
     n_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
@@ -141,3 +141,19 @@ if __name__ == "__main__":
     x = torch.randn(32, 1, 64, 44)
     out = model(x)
     print(out.shape)
+
+
+def test_env_net():
+    model = EnvNet(n_classes=10)
+
+    n_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+    print(n_params)
+
+    x = torch.randn(32, 1, 1, 44_100)
+    out = model(x)
+    print(out.shape)
+
+
+if __name__ == "__main__":
+    # test_custom_cnn()
+    test_env_net()
