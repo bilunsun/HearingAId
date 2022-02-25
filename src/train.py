@@ -125,6 +125,17 @@ class Model(pl.LightningModule):
             if self.model.classifier[-1].out_features != self.hparams.n_classes:
                 print("CUSTOMM")
                 self.model.classifier[-1] = nn.Linear(self.model.classifier[-1].in_features, self.hparams.n_classes)
+
+            # Freeze weights
+            # for param in self.model.parameters():
+            #     print("FROZEN")
+            #     param.requires_grad = False
+
+            # self.model.classifier = nn.Sequential(
+            #     nn.Linear(self.model.classifier[0].in_features, 1024),
+            #     nn.ReLU(inplace=True),
+            #     nn.Linear(1024, self.hparams.n_classes)
+            # )
         else:
             self.model = EnvNet(n_classes=self.hparams.n_classes)
 
@@ -171,12 +182,13 @@ class Model(pl.LightningModule):
         return self.optimizer
 
     def on_fit_start(self):
-        all_x = []
-        for x, _ in tqdm(self.trainer.datamodule.train_dataloader()):
-            all_x.append(x)
-        all_x = torch.cat(all_x)
+        if not self.hparams.pretrain_ckpt:
+            all_x = []
+            for x, _ in tqdm(self.trainer.datamodule.train_dataloader()):
+                all_x.append(x)
+            all_x = torch.cat(all_x)
+            self.scaler.fit(all_x)
 
-        self.scaler.fit(all_x)
         self.scaler.to("cuda")
         print("mean.shape", self.scaler.mean.shape, "mean", self.scaler.mean)
         print("std.shape", self.scaler.std.shape, "std", self.scaler.std)

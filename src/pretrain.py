@@ -94,9 +94,6 @@ class PretrainModel(pl.LightningModule):
 
         self.scaler = Scaler(size=())
 
-        # self._y_hat = []
-        # self._y = []
-
     def forward(self, x):
         return self.model(x)
 
@@ -112,29 +109,30 @@ class PretrainModel(pl.LightningModule):
 
         return loss
 
-    # def validation_step(self, batch, _):
-    #     x, y = batch
-    #     x = self.scaler.transform(x)
+    def validation_step(self, batch, _):
+        x, y = batch
+        x = self.scaler.transform(x)
 
-    #     pred = self(x)
-    #     loss = self.criterion(pred, y)
-    #     self.log("val_loss", loss, prog_bar=True, logger=True)
+        pred = F.log_softmax(self(x), dim=1)
+        loss = self.criterion(pred, y)
+        self.log("val_loss", loss, prog_bar=True, logger=True)
+        self.log("val_mean", x.mean(), prog_bar=True, logger=True)
+        self.log("val_std", x.std(), prog_bar=True, logger=True)
 
-    #     y_hat = torch.argmax(pred, dim=1)
-
-    #     self._y_hat.append(y_hat)
-    #     self._y.append(y)
+        return loss
 
     def configure_optimizers(self):
         return self.optimizer
 
     def on_fit_start(self):
-        # all_x = []
-        # for x, _ in tqdm(self.trainer.datamodule.train_dataloader()):
-        #     all_x.append(x)
-        # all_x = torch.cat(all_x)
+        all_x = []
+        for i, (x, _) in enumerate(tqdm(self.trainer.datamodule.train_dataloader())):
+            if i == 10:
+                break
+            all_x.append(x)
+        all_x = torch.cat(all_x)
 
-        # self.scaler.fit(all_x)
+        self.scaler.fit(all_x)
         self.scaler.to("cuda")
         print("mean.shape", self.scaler.mean.shape, "mean", self.scaler.mean)
         print("std.shape", self.scaler.std.shape, "std", self.scaler.std)
@@ -145,28 +143,11 @@ class PretrainModel(pl.LightningModule):
             {
                 "train_set_size": len(self.trainer.datamodule.train_dataset),
                 "val_set_size": len(self.trainer.datamodule.val_dataset),
+                "train_folds": self.trainer.datamodule.train_folds,
+                "val_folds": self.trainer.datamodule.val_folds,
                 "class_names": self.class_names,
             }
         )
-
-    # def on_validation_epoch_end(self, *args) -> None:
-    #     """
-    #     Used to plot the confusion matrix
-    #     """
-    #     y = torch.cat(self._y).cpu().numpy()
-    #     y_hat = torch.cat(self._y_hat).cpu().numpy()
-
-    #     accuracy = (y == y_hat).mean()  # Need to cast Long tensor to Float
-    #     self.log("val_accuracy", accuracy, prog_bar=True, logger=True)
-
-    #     # # import pdb; pdb.set_trace()
-    #     # self.logger.experiment.log(
-    #     #     {"Confusion Matrix": wandb.plot.confusion_matrix(y_true=y, preds=y_hat, class_names=self.class_names,)}
-    #     # )
-
-    #     # Reset
-    #     self._y = []
-    #     self._y_hat = []
 
 
 class WandbModelCheckpoint(ModelCheckpoint):
@@ -204,7 +185,7 @@ def main(args):
         dirpath=configs["checkpoints_dir"],
         filename=logger.experiment.name,
         save_top_k=5,
-        monitor="train_loss",
+        monitor="val_loss",
         mode="min",
         every_n_epochs=1,
         verbose=True,
@@ -228,12 +209,11 @@ if __name__ == "__main__":
 
     parser.add_argument("--dataset_name", type=str, default="urbansound8k")
     parser.add_argument("--batch_size", type=int, default=128)
-    parser.add_argument("--train_ratio", type=int, default=0.99)
     parser.add_argument("--shuffle", type=bool, default=True)
     parser.add_argument("--num_workers", type=int, default=8)
     parser.add_argument("--data_dir", type=str, default="data")
     parser.add_argument("--checkpoints_dir", type=str, default="checkpoints")
-    parser.add_argument("--max_epochs", type=int, default=1_000)
+    parser.add_argument("--max_epochs", type=int, default=5_000)
     parser.add_argument("--project", type=str, default="TEST-hearingAId")
     parser.add_argument("--check_val_every_n_epoch", type=int, default=1)
     parser.add_argument("--seed", type=int, default=None)
