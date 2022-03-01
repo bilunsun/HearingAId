@@ -22,7 +22,13 @@ mel_spectrogram = torchaudio.transforms.MelSpectrogram(
 )
 
 
-def preprocess(x, sample_rate, target_sample_rate: int = TARGET_SAMPLE_RATE, n_samples: int = N_SAMPLES):
+def preprocess(
+    x,
+    sample_rate,
+    target_sample_rate: int = TARGET_SAMPLE_RATE,
+    n_samples: int = N_SAMPLES,
+    convert_to_mel: bool = False,
+):
     # # Normalize
     # x = x / 32768
 
@@ -47,6 +53,9 @@ def preprocess(x, sample_rate, target_sample_rate: int = TARGET_SAMPLE_RATE, n_s
     random_index = random.randint(0, len_data - n_samples)
     x = x[:, :, random_index : random_index + n_samples]
 
+    if convert_to_mel:
+        x = mel_spectrogram(x.squeeze(0))
+
     return x
 
 
@@ -55,7 +64,9 @@ class StandardDataset(Dataset):
     Simple base class for Urbansound8K and ESC-50 datasets
     """
 
-    def __init__(self, root: str, target_sample_rate: int, n_samples: int, pretraining: str) -> None:
+    def __init__(
+        self, root: str, target_sample_rate: int, n_samples: int, pretraining: str, convert_to_mel: bool
+    ) -> None:
         self.GETITEM_METHOD = {
             None: self._regular_getitem,
             "mix": self._mix_getitem,
@@ -72,6 +83,7 @@ class StandardDataset(Dataset):
         self.target_sample_rate = target_sample_rate
         self.n_samples = n_samples
         self.pretraining = pretraining
+        self.convert_to_mel = convert_to_mel
 
         self.getitem_method = self.GETITEM_METHOD[pretraining]
 
@@ -106,7 +118,7 @@ class StandardDataset(Dataset):
         if scale_augment:
             x = self._scale(x)
 
-        x = preprocess(x, sample_rate, self.target_sample_rate, self.n_samples)
+        x = preprocess(x, sample_rate, self.target_sample_rate, self.n_samples, self.convert_to_mel)
 
         # Post-augment
         if gain_augment:
@@ -160,10 +172,23 @@ class StandardDataset(Dataset):
 
     @classmethod
     def split_folds(cls, dataset: Dataset, n_validation_folds: int = 1):
-        val_folds = random.choices(dataset.n_folds, k=n_validation_folds)
+        # val_folds = random.choices(dataset.n_folds, k=n_validation_folds)
+        val_folds = [3]
         train_folds = list(set(dataset.n_folds) - set(val_folds))
-        train_set = cls(pretraining=dataset.pretraining, folds=train_folds)
-        val_set = cls(pretraining=dataset.pretraining, folds=val_folds)
+        train_set = cls(
+            pretraining=dataset.pretraining,
+            target_sample_rate=dataset.target_sample_rate,
+            n_samples=dataset.n_samples,
+            convert_to_mel=dataset.convert_to_mel,
+            folds=train_folds,
+        )
+        val_set = cls(
+            pretraining=dataset.pretraining,
+            target_sample_rate=dataset.target_sample_rate,
+            n_samples=dataset.n_samples,
+            convert_to_mel=dataset.convert_to_mel,
+            folds=val_folds,
+        )
 
         return train_set, val_set, train_folds, val_folds
 
@@ -175,9 +200,10 @@ class UrbanSound8KDataset(StandardDataset):
         pretraining: str = None,
         target_sample_rate: int = TARGET_SAMPLE_RATE,
         n_samples: int = N_SAMPLES,
+        convert_to_mel: bool = False,
         folds: List[int] = None,
     ) -> None:
-        super().__init__(root, target_sample_rate, n_samples, pretraining)
+        super().__init__(root, target_sample_rate, n_samples, pretraining, convert_to_mel)
 
         self.audio_dir = os.path.join(self.root, "audio")
         self.meta_path = os.path.join(self.root, "metadata", "UrbanSound8K.csv")
@@ -202,9 +228,10 @@ class ESC50Dataset(StandardDataset):
         pretraining: str = None,
         target_sample_rate: int = TARGET_SAMPLE_RATE,
         n_samples: int = N_SAMPLES,
+        convert_to_mel: bool = False,
         folds: List[int] = None,
     ) -> None:
-        super().__init__(root, target_sample_rate, n_samples, pretraining)
+        super().__init__(root, target_sample_rate, n_samples, pretraining, convert_to_mel)
 
         self.audio_dir = os.path.join(self.root, "audio")
         self.meta_path = os.path.join(self.root, "meta", "esc50.csv")
@@ -228,6 +255,9 @@ class AudioDataModule(pl.LightningDataModule):
         shuffle: bool = True,
         num_workers: int = 0,
         pretraining: str = None,
+        convert_to_mel: bool = False,
+        target_sample_rate: int = TARGET_SAMPLE_RATE,
+        n_samples: int = N_SAMPLES,
         folds: List[int] = None,
         **kwargs,
     ):
@@ -237,10 +267,17 @@ class AudioDataModule(pl.LightningDataModule):
         self.shuffle = shuffle
         self.num_workers = num_workers
         self.pretraining = pretraining
+        self.convert_to_mel = convert_to_mel
         self.extra_kwargs = {"prefetch_factor": 4, "persistent_workers": True} if self.num_workers > 0 else {}
 
         dataset_class = UrbanSound8KDataset if dataset_name == "urbansound8k" else ESC50Dataset
-        dataset = dataset_class(pretraining=pretraining, folds=folds)
+        dataset = dataset_class(
+            pretraining=pretraining,
+            folds=folds,
+            convert_to_mel=convert_to_mel,
+            target_sample_rate=target_sample_rate,
+            n_samples=n_samples,
+        )
         print(f"There are {len(dataset)} samples in the {dataset_name} dataset.")
         signal, _ = dataset[1]
 
@@ -280,7 +317,13 @@ class AudioDataModule(pl.LightningDataModule):
 
 def test():
     dm = AudioDataModule(
-        dataset_name="urbansound8k", batch_size=32, train_ratio=0.9, shuffle=False, num_workers=0, pretraining="simsiam"
+        dataset_name="urbansound8k",
+        batch_size=32,
+        shuffle=False,
+        num_workers=0,
+        convert_to_mel=True,
+        target_sample_rate=16_000,
+        n_samples=16_000,
     )
     for i, (x, y) in enumerate(dm.train_dataloader()):
         print(x.shape, x.mean(), x.std())

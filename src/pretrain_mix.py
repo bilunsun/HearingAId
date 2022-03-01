@@ -2,72 +2,15 @@ import argparse
 import pytorch_lightning as pl
 import torch
 import torch.nn.functional as F
-import wandb
 from pytorch_lightning.callbacks import ModelCheckpoint
 from pytorch_lightning.loggers import WandbLogger
 from torch import nn
 from tqdm.auto import tqdm
 
-from lib import AudioDataModule, EnvNet
+from lib import AudioDataModule, EnvNet, StandardScaler
 
 
-# class Scaler(nn.Module):
-#     """Basic log scaler class"""
-
-#     def __init__(self, size: int):
-#         super().__init__()
-
-#         self.register_buffer("mean", torch.zeros(size))
-#         self.register_buffer("std", torch.ones(size))
-#         self.device = torch.device("cpu")
-
-#     def fit(self, x):
-#         x = torch.clip(x, min=1e-8)
-#         x = torch.log10(x).flatten()
-#         self.mean = torch.mean(x, dim=0)
-#         self.std = torch.std(x, dim=0)
-
-#     def transform(self, x):
-#         x = torch.clip(x, min=1e-8)
-#         return (torch.log10(x) - self.mean) / self.std
-
-#     def to(self, device):
-#         self.mean = self.mean.to(device)
-#         self.std = self.std.to(device)
-#         self.device = device
-
-#     def __repr__(self):
-#         return f"mean: {self.mean}\tstd: {self.std}"
-
-
-class Scaler(nn.Module):
-    """Basic log scaler class"""
-
-    def __init__(self, size: int):
-        super().__init__()
-
-        self.register_buffer("mean", torch.zeros(size))
-        self.register_buffer("std", torch.ones(size) / 10)
-        self.device = torch.device("cpu")
-
-    def fit(self, x):
-        mask = x != 0
-        self.mean = torch.mean(x[mask].view(-1))
-        self.std = torch.std(x[mask].view(-1))
-
-    def transform(self, x):
-        return (x - self.mean) / self.std
-
-    def to(self, device):
-        self.mean = self.mean.to(device)
-        self.std = self.std.to(device)
-        self.device = device
-
-    def __repr__(self):
-        return f"mean: {self.mean}\tstd: {self.std}"
-
-
-class PretrainModel(pl.LightningModule):
+class PretrainMix(pl.LightningModule):
     """
     Defines the hooks for training using pytorch lightning
     """
@@ -87,15 +30,15 @@ class PretrainModel(pl.LightningModule):
 
         self.save_hyperparameters()
 
-        self.model = EnvNet(n_classes=self.hparams.n_classes)
+        self.backbone = EnvNet(width=self.hparams.width, height=self.hparams.height, n_classes=self.hparams.n_classes)
 
-        self.optimizer = torch.optim.Adam(self.model.parameters(), lr=self.hparams.lr)
+        self.optimizer = torch.optim.Adam(self.backbone.parameters(), lr=self.hparams.lr)
         self.criterion = nn.KLDivLoss(reduction="batchmean")
 
-        self.scaler = Scaler(size=())
+        self.scaler = StandardScaler(size=())
 
     def forward(self, x):
-        return self.model(x)
+        return self.backbone(x)
 
     def training_step(self, batch, _):
         x, y = batch
@@ -150,15 +93,6 @@ class PretrainModel(pl.LightningModule):
         )
 
 
-class WandbModelCheckpoint(ModelCheckpoint):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-
-    def on_save_checkpoint(self, trainer, pl_module, checkpoint):
-        super().on_save_checkpoint(trainer, pl_module, checkpoint)
-        pl_module.logger.experiment.save(self.best_model_path, base_path=self.dirpath)
-
-
 def main(args):
     configs = vars(args)
 
@@ -167,13 +101,13 @@ def main(args):
     configs["seed"] = seed
 
     # Pretrain
-    configs["pretraining"] = True
+    configs["pretraining"] = "mix"
 
     audio_datamodule = AudioDataModule(**configs)
     configs["width"] = audio_datamodule.width
     configs["height"] = audio_datamodule.height
     configs["n_classes"] = audio_datamodule.n_classes
-    model = PretrainModel(**configs)
+    model = PretrainMix(**configs)
 
     print("Model hparams")
     print(model.hparams)
@@ -210,7 +144,7 @@ if __name__ == "__main__":
     parser.add_argument("--dataset_name", type=str, default="urbansound8k")
     parser.add_argument("--batch_size", type=int, default=128)
     parser.add_argument("--shuffle", type=bool, default=True)
-    parser.add_argument("--num_workers", type=int, default=8)
+    parser.add_argument("--num_workers", type=int, default=4)
     parser.add_argument("--data_dir", type=str, default="data")
     parser.add_argument("--checkpoints_dir", type=str, default="checkpoints")
     parser.add_argument("--max_epochs", type=int, default=5_000)
@@ -218,7 +152,7 @@ if __name__ == "__main__":
     parser.add_argument("--check_val_every_n_epoch", type=int, default=1)
     parser.add_argument("--seed", type=int, default=None)
 
-    parser = PretrainModel.add_model_specific_args(parser)
+    parser = PretrainMix.add_model_specific_args(parser)
     args = parser.parse_args()
 
     main(args)
