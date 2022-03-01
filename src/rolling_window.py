@@ -38,7 +38,7 @@ def yield_data(dq: deque, lock: Lock, exit_signal: Event):
     p = pyaudio.PyAudio()
     stream = p.open(format=pyaudio.paInt16, channels=CHANNELS, rate=RATE, input=True, frames_per_buffer=CHUNK)
 
-    for _ in range(1000000):  # Test without infinite loop for now
+    while True:  # Test without infinite loop for now
         if exit_signal.is_set():
             break
 
@@ -87,16 +87,7 @@ data_thread = Thread(target=yield_data, args=(dq, lock, exit_signal,))
 def main():
     data_thread.start()
 
-    # Countdown
-    # print("Starting in:")
-    # for i in range(3, 0, -1):
-    #     print(i)
-    #     time.sleep(1)
-    # print("Recording...")
-
-    # Recording
-    # all_data = []
-    for _ in range(100_000):
+    while True:
         raw_data = list(dq)  # The 'lock' object does not seem to be necessary for reading
 
         if len(raw_data) < buffer_len:
@@ -104,21 +95,6 @@ def main():
             continue
 
         classify(raw_data)
-
-        # visualize(raw_data)
-        # curr_time = time.time()
-        # print(curr_time % 1, "OK")
-        # time.sleep(0.1)
-        # all_data.append(raw_data)
-        # time.sleep(0.1)
-    # print("DONE.")
-
-    # # Visualizing
-    # for data in all_data:
-    #     visualize(data)
-
-    exit_signal.set()
-    data_thread.join()
 
 
 if __name__ == "__main__":
