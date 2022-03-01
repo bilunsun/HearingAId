@@ -9,12 +9,12 @@ TARGET_SAMPLE_RATE = 22050
 N_SAMPLES = 22050
 TO_MELSPECTROGRAM = torchaudio.transforms.MelSpectrogram(sample_rate=TARGET_SAMPLE_RATE, n_fft=1024, hop_length=512, n_mels=64)
 
-# Raspberry Pi 4 quantized engine
+# Quantization Engine for Pi 4 and Jetson Nano
 import platform
-if platform.system() == 'Linux' and not torch.cuda.is_available():
+if platform.system() == 'Linux':
     torch.backends.quantized.engine = 'qnnpack'
 
-model = Model.load_from_checkpoint("src/checkpoints/worthy-monkey-70.ckpt")
+model = Model.load_from_checkpoint("src/checkpoints/autumn-wind-80.ckpt")
 model, scaler = model.model, model.scaler
 
 # Quantization aware training
