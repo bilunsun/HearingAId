@@ -5,71 +5,88 @@ from typing import List
 
 
 class EnvNet(nn.Module):
+    CLASSIFIER_HIDDEN_DIM = 1024
+
     def __init__(self, width: int, height: int, n_classes: int, in_channels: int = 1):
         super().__init__()
 
         self.n_classes = n_classes
 
         self.conv1 = nn.Conv2d(in_channels=1, out_channels=32, kernel_size=(1, 64), stride=(1, 2))
+        self.bn1 = nn.BatchNorm2d(num_features=32)
         self.conv2 = nn.Conv2d(in_channels=32, out_channels=64, kernel_size=(1, 16), stride=(1, 2))
+        self.bn2 = nn.BatchNorm2d(num_features=64)
         self.pool2 = nn.MaxPool2d(kernel_size=(1, 64), stride=(1, 64))
 
         self.conv3 = nn.Conv2d(in_channels=1, out_channels=32, kernel_size=(8, 8), stride=(1, 1))
+        self.bn3 = nn.BatchNorm2d(num_features=32)
         self.conv4 = nn.Conv2d(in_channels=32, out_channels=32, kernel_size=(8, 8), stride=(1, 1))
+        self.bn4 = nn.BatchNorm2d(num_features=32)
         self.pool4 = nn.MaxPool2d(kernel_size=(5, 3), stride=(5, 3))
 
         self.conv5 = nn.Conv2d(in_channels=32, out_channels=64, kernel_size=(1, 4), stride=(1, 1))
+        self.bn5 = nn.BatchNorm2d(num_features=64)
         self.conv6 = nn.Conv2d(in_channels=64, out_channels=64, kernel_size=(1, 4), stride=(1, 1))
+        self.bn6 = nn.BatchNorm2d(num_features=64)
         self.pool6 = nn.MaxPool2d(kernel_size=(1, 2), stride=(1, 2))
 
-        self.conv7 = nn.Conv2d(in_channels=64, out_channels=128, kernel_size=(1, 4), stride=(1, 1))
-        self.conv8 = nn.Conv2d(in_channels=128, out_channels=128, kernel_size=(1, 4), stride=(1, 1))
+        self.conv7 = nn.Conv2d(in_channels=64, out_channels=128, kernel_size=(1, 2), stride=(1, 1))
+        self.bn7 = nn.BatchNorm2d(num_features=128)
+        self.conv8 = nn.Conv2d(in_channels=128, out_channels=128, kernel_size=(1, 2), stride=(1, 1))
+        self.bn8 = nn.BatchNorm2d(num_features=128)
         self.pool8 = nn.MaxPool2d(kernel_size=(1, 2), stride=(1, 2))
+
+        self.conv9 = nn.Conv2d(in_channels=128, out_channels=256, kernel_size=(1, 2), stride=(1, 1))
+        self.bn9 = nn.BatchNorm2d(num_features=256)
+        self.conv10 = nn.Conv2d(in_channels=256, out_channels=256, kernel_size=(1, 2), stride=(1, 1))
+        self.bn10 = nn.BatchNorm2d(num_features=256)
+        self.pool10 = nn.MaxPool2d(kernel_size=(1, 2), stride=(1, 2))
 
         x = torch.randn(1, in_channels, height, width)
         x = self.backbone(x)
-        x = x.max(dim=2).values
+        print("Backbone output shape:", x.shape)
         x = x.reshape(x.size(0), -1)
         self.latent_dim = x.size(-1)
-        # self.conv9 = nn.Conv2d(in_channels=128, out_channels=256, kernel_size=(1, 4), stride=(1, 1))
-        # self.conv10 = nn.Conv2d(in_channels=256, out_channels=256, kernel_size=(1, 4), stride=(1, 1))
-        # self.pool10 = nn.MaxPool2d(kernel_size=(1, 2), stride=(1, 2))
 
         self.classifier = nn.Sequential(
-            nn.Linear(self.latent_dim, 1024),
+            nn.Linear(self.latent_dim, self.CLASSIFIER_HIDDEN_DIM),
+            nn.Dropout(p=0.5),
             nn.ReLU(inplace=True),
-            nn.Linear(1024, n_classes),
+            nn.Linear(self.CLASSIFIER_HIDDEN_DIM, self.CLASSIFIER_HIDDEN_DIM),
+            nn.Dropout(p=0.5),
+            nn.ReLU(inplace=True),
+            nn.Linear(self.CLASSIFIER_HIDDEN_DIM, n_classes),
         )
 
     def backbone(self, x):
-        x = F.relu(self.conv1(x))
-        x = F.relu(self.conv2(x))
+        x = F.relu(self.bn1(self.conv1(x)))
+        x = F.relu(self.bn2(self.conv2(x)))
         x = self.pool2(x)
 
         x = x.transpose(1, 2)
 
-        x = F.relu(self.conv3(x))
-        x = F.relu(self.conv4(x))
+        x = F.relu(self.bn3(self.conv3(x)))
+        x = F.relu(self.bn4(self.conv4(x)))
         x = self.pool4(x)
 
-        x = F.relu(self.conv5(x))
-        x = F.relu(self.conv6(x))
+        x = F.relu(self.bn5(self.conv5(x)))
+        x = F.relu(self.bn6(self.conv6(x)))
         x = self.pool6(x)
 
-        x = F.relu(self.conv7(x))
-        x = F.relu(self.conv8(x))
+        x = F.relu(self.bn7(self.conv7(x)))
+        x = F.relu(self.bn8(self.conv8(x)))
         x = self.pool8(x)
 
-        # x = F.relu(self.conv9(x))
-        # x = F.relu(self.conv10(x))
-        # x = self.pool10(x)
+        x = F.relu(self.bn9(self.conv9(x)))
+        x = F.relu(self.bn10(self.conv10(x)))
+        x = self.pool10(x)
 
         return x
 
     def forward(self, x):
         x = self.backbone(x)
 
-        x = x.max(dim=2).values
+        # x = x.max(dim=3).values
         x = x.view(x.size(0), self.latent_dim)
 
         x = self.classifier(x)

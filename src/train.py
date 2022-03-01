@@ -223,7 +223,7 @@ if __name__ == "__main__":
     parser.add_argument("--num_workers", type=int, default=4)
     parser.add_argument("--data_dir", type=str, default="data")
     parser.add_argument("--checkpoints_dir", type=str, default="checkpoints")
-    parser.add_argument("--max_epochs", type=int, default=1_000)
+    parser.add_argument("--max_epochs", type=int, default=5_000)
     parser.add_argument("--project", type=str, default="TEST-hearingAId")
     parser.add_argument("--check_val_every_n_epoch", type=int, default=1)
     parser.add_argument("--seed", type=int, default=None)
