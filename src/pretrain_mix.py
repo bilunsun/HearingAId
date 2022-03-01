@@ -2,16 +2,15 @@ import argparse
 import pytorch_lightning as pl
 import torch
 import torch.nn.functional as F
-import wandb
 from pytorch_lightning.callbacks import ModelCheckpoint
 from pytorch_lightning.loggers import WandbLogger
 from torch import nn
 from tqdm.auto import tqdm
 
-from lib import AudioDataModule, EnvNet, CustomCNN, MelScaler, StandardScaler
+from lib import AudioDataModule, EnvNet, StandardScaler
 
 
-class PretrainSimSiam(pl.LightningModule):
+class PretrainMix(pl.LightningModule):
     """
     Defines the hooks for training using pytorch lightning
     """
@@ -22,10 +21,6 @@ class PretrainSimSiam(pl.LightningModule):
 
         parser.add_argument("--n_classes", type=int, default=10)
         parser.add_argument("--transfer_ckpt", type=str, default=None)
-        parser.add_argument("--width", type=int, default=16_000)
-        parser.add_argument("--height", type=int, default=1)
-        parser.add_argument("--hidden_dim", type=int, default=1024)
-        parser.add_argument("--out_dim", type=int, default=1024)
         parser.add_argument("--lr", type=float, default=5e-4)
 
         return parser
@@ -35,79 +30,37 @@ class PretrainSimSiam(pl.LightningModule):
 
         self.save_hyperparameters()
 
-        if self.hparams.get("convert_to_mel"):
-            self.backbone = CustomCNN(width=self.hparams.width, height=self.hparams.height, n_classes=self.hparams.n_classes)
-        else:
-            self.backbone = EnvNet(n_classes=self.hparams.n_classes, width=self.hparams.width, height=self.hparams.height)
+        self.backbone = EnvNet(width=self.hparams.width, height=self.hparams.height, n_classes=self.hparams.n_classes)
 
-        self.backbone.classifier = nn.Identity()
+        self.optimizer = torch.optim.Adam(self.backbone.parameters(), lr=self.hparams.lr)
+        self.criterion = nn.KLDivLoss(reduction="batchmean")
 
-        self.latent_dim = self.backbone.latent_dim
-
-        self.projection_mlp = nn.Sequential(
-            nn.Linear(self.latent_dim, self.hparams.hidden_dim),
-            nn.BatchNorm1d(self.hparams.hidden_dim),
-            nn.ReLU(inplace=True),
-            nn.Linear(self.hparams.hidden_dim, self.hparams.hidden_dim),
-            nn.BatchNorm1d(self.hparams.hidden_dim),
-            nn.ReLU(inplace=True),
-            nn.Linear(self.hparams.hidden_dim, self.hparams.out_dim),
-            nn.BatchNorm1d(self.hparams.hidden_dim)
-        )
-
-        # Encoder
-        self.f = nn.Sequential(
-            self.backbone,
-            self.projection_mlp
-        )
-
-        # Predictor
-        self.h = nn.Sequential(
-            nn.Linear(self.hparams.hidden_dim, self.hparams.hidden_dim),
-            nn.BatchNorm1d(self.hparams.hidden_dim),
-            nn.ReLU(inplace=True),
-            nn.Linear(self.hparams.hidden_dim, self.hparams.out_dim)
-        )
-
-        self.optimizer = torch.optim.Adam(self.parameters(), lr=self.hparams.lr)
-
-        self.scaler = MelScaler(size=()) if self.hparams.get("convert_to_mel") else StandardScaler(size=())
-
-    def criterion(self, p, z):
-        return -F.cosine_similarity(p, z.detach(), dim=-1).mean()
+        self.scaler = StandardScaler(size=())
 
     def forward(self, x):
         return self.backbone(x)
 
     def training_step(self, batch, _):
-        x1, x2 = batch
-        x1 = self.scaler.transform(x1)
-        x2 = self.scaler.transform(x2)
-        z1, z2 = self.f(x1), self.f(x2)
-        p1, p2 = self.h(z1), self.h(z2)
+        x, y = batch
+        x = self.scaler.transform(x)
 
-        loss = self.criterion(p1, z2) / 2 + self.criterion(p2, z1) / 2
-
+        pred = F.log_softmax(self(x), dim=1)
+        loss = self.criterion(pred, y)
         self.log("train_loss", loss, prog_bar=True, logger=True)
+        self.log("train_mean", x.mean(), prog_bar=True, logger=True)
+        self.log("train_std", x.std(), prog_bar=True, logger=True)
 
         return loss
 
     def validation_step(self, batch, _):
-        x1, x2 = batch
-        x1 = self.scaler.transform(x1)
-        x2 = self.scaler.transform(x2)
-        # import matplotlib.pyplot as plt
-        # import pdb; pdb.set_trace()
-        # data = x1.reshape(-1).numpy()
-        # plt.hist(data, bins=100)
-        # plt.show()
+        x, y = batch
+        x = self.scaler.transform(x)
 
-        z1, z2 = self.f(x1), self.f(x2)
-        p1, p2 = self.h(z1), self.h(z2)
-
-        loss = self.criterion(p1, z2) / 2 + self.criterion(p2, z1) / 2
-
+        pred = F.log_softmax(self(x), dim=1)
+        loss = self.criterion(pred, y)
         self.log("val_loss", loss, prog_bar=True, logger=True)
+        self.log("val_mean", x.mean(), prog_bar=True, logger=True)
+        self.log("val_std", x.std(), prog_bar=True, logger=True)
 
         return loss
 
@@ -116,14 +69,13 @@ class PretrainSimSiam(pl.LightningModule):
 
     def on_fit_start(self):
         all_x = []
-        for i, (x1, x2) in enumerate(tqdm(self.trainer.datamodule.train_dataloader())):
-            if i == 5:
+        for i, (x, _) in enumerate(tqdm(self.trainer.datamodule.train_dataloader())):
+            if i == 10:
                 break
-            all_x.append(x1)
-            all_x.append(x2)
+            all_x.append(x)
         all_x = torch.cat(all_x)
-        self.scaler.fit(all_x)
 
+        self.scaler.fit(all_x)
         self.scaler.to("cuda")
         print("mean.shape", self.scaler.mean.shape, "mean", self.scaler.mean)
         print("std.shape", self.scaler.std.shape, "std", self.scaler.std)
@@ -141,15 +93,6 @@ class PretrainSimSiam(pl.LightningModule):
         )
 
 
-class WandbModelCheckpoint(ModelCheckpoint):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-
-    def on_save_checkpoint(self, trainer, pl_module, checkpoint):
-        super().on_save_checkpoint(trainer, pl_module, checkpoint)
-        pl_module.logger.experiment.save(self.best_model_path, base_path=self.dirpath)
-
-
 def main(args):
     configs = vars(args)
 
@@ -158,13 +101,13 @@ def main(args):
     configs["seed"] = seed
 
     # Pretrain
-    configs["pretraining"] = "simsiam"
+    configs["pretraining"] = "mix"
 
     audio_datamodule = AudioDataModule(**configs)
     configs["width"] = audio_datamodule.width
     configs["height"] = audio_datamodule.height
     configs["n_classes"] = audio_datamodule.n_classes
-    model = PretrainSimSiam(**configs)
+    model = PretrainMix(**configs)
 
     print("Model hparams")
     print(model.hparams)
@@ -199,12 +142,9 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
 
     parser.add_argument("--dataset_name", type=str, default="urbansound8k")
-    parser.add_argument("--target_sample_rate", type=int, default=16_000)
-    parser.add_argument("--n_samples", type=int, default=24_000)
-    parser.add_argument("--convert_to_mel", action="store_true")
     parser.add_argument("--batch_size", type=int, default=128)
     parser.add_argument("--shuffle", type=bool, default=True)
-    parser.add_argument("--num_workers", type=int, default=8)
+    parser.add_argument("--num_workers", type=int, default=4)
     parser.add_argument("--data_dir", type=str, default="data")
     parser.add_argument("--checkpoints_dir", type=str, default="checkpoints")
     parser.add_argument("--max_epochs", type=int, default=5_000)
@@ -212,7 +152,7 @@ if __name__ == "__main__":
     parser.add_argument("--check_val_every_n_epoch", type=int, default=1)
     parser.add_argument("--seed", type=int, default=None)
 
-    parser = PretrainSimSiam.add_model_specific_args(parser)
+    parser = PretrainMix.add_model_specific_args(parser)
     args = parser.parse_args()
 
     main(args)
