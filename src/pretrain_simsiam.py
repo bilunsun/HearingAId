@@ -8,34 +8,7 @@ from pytorch_lightning.loggers import WandbLogger
 from torch import nn
 from tqdm.auto import tqdm
 
-from lib import AudioDataModule, EnvNet
-
-
-class Scaler(nn.Module):
-    """Basic log scaler class"""
-
-    def __init__(self, size: int):
-        super().__init__()
-
-        self.register_buffer("mean", torch.zeros(size))
-        self.register_buffer("std", torch.ones(size) / 5)
-        self.device = torch.device("cpu")
-
-    def fit(self, x):
-        mask = x != 0
-        self.mean = torch.mean(x[mask].view(-1))
-        self.std = torch.std(x[mask].view(-1))
-
-    def transform(self, x):
-        return (x - self.mean) / self.std
-
-    def to(self, device):
-        self.mean = self.mean.to(device)
-        self.std = self.std.to(device)
-        self.device = device
-
-    def __repr__(self):
-        return f"mean: {self.mean}\tstd: {self.std}"
+from lib import AudioDataModule, EnvNet, CustomCNN, MelScaler, StandardScaler
 
 
 class PretrainSimSiam(pl.LightningModule):
@@ -50,6 +23,7 @@ class PretrainSimSiam(pl.LightningModule):
         parser.add_argument("--n_classes", type=int, default=10)
         parser.add_argument("--transfer_ckpt", type=str, default=None)
         parser.add_argument("--width", type=int, default=16_000)
+        parser.add_argument("--height", type=int, default=1)
         parser.add_argument("--hidden_dim", type=int, default=1024)
         parser.add_argument("--out_dim", type=int, default=1024)
         parser.add_argument("--lr", type=float, default=5e-4)
@@ -61,12 +35,14 @@ class PretrainSimSiam(pl.LightningModule):
 
         self.save_hyperparameters()
 
-        self.backbone = EnvNet(n_classes=self.hparams.n_classes)
+        if self.hparams.get("convert_to_mel"):
+            self.backbone = CustomCNN(width=self.hparams.width, height=self.hparams.height, n_classes=self.hparams.n_classes)
+        else:
+            self.backbone = EnvNet(n_classes=self.hparams.n_classes, width=self.hparams.width, height=self.hparams.height)
+
         self.backbone.classifier = nn.Identity()
 
-        with torch.no_grad():
-            x = torch.randn(1, 1, 1, self.hparams.width)
-            self.latent_dim = self.backbone(x).size(-1)
+        self.latent_dim = self.backbone.latent_dim
 
         self.projection_mlp = nn.Sequential(
             nn.Linear(self.latent_dim, self.hparams.hidden_dim),
@@ -94,9 +70,8 @@ class PretrainSimSiam(pl.LightningModule):
         )
 
         self.optimizer = torch.optim.Adam(self.parameters(), lr=self.hparams.lr)
-        self.criterion = nn.KLDivLoss(reduction="batchmean")
 
-        self.scaler = Scaler(size=())
+        self.scaler = MelScaler(size=()) if self.hparams.get("convert_to_mel") else StandardScaler(size=())
 
     def criterion(self, p, z):
         return -F.cosine_similarity(p, z.detach(), dim=-1).mean()
@@ -106,6 +81,8 @@ class PretrainSimSiam(pl.LightningModule):
 
     def training_step(self, batch, _):
         x1, x2 = batch
+        x1 = self.scaler.transform(x1)
+        x2 = self.scaler.transform(x2)
         z1, z2 = self.f(x1), self.f(x2)
         p1, p2 = self.h(z1), self.h(z2)
 
@@ -117,6 +94,14 @@ class PretrainSimSiam(pl.LightningModule):
 
     def validation_step(self, batch, _):
         x1, x2 = batch
+        x1 = self.scaler.transform(x1)
+        x2 = self.scaler.transform(x2)
+        # import matplotlib.pyplot as plt
+        # import pdb; pdb.set_trace()
+        # data = x1.reshape(-1).numpy()
+        # plt.hist(data, bins=100)
+        # plt.show()
+
         z1, z2 = self.f(x1), self.f(x2)
         p1, p2 = self.h(z1), self.h(z2)
 
@@ -137,8 +122,8 @@ class PretrainSimSiam(pl.LightningModule):
             all_x.append(x1)
             all_x.append(x2)
         all_x = torch.cat(all_x)
-
         self.scaler.fit(all_x)
+
         self.scaler.to("cuda")
         print("mean.shape", self.scaler.mean.shape, "mean", self.scaler.mean)
         print("std.shape", self.scaler.std.shape, "std", self.scaler.std)
@@ -207,7 +192,7 @@ def main(args):
         check_val_every_n_epoch=configs["check_val_every_n_epoch"],
     )
 
-    trainer.fit(model, datamodule=audio_datamodule, ckpt_path="checkpoints/scarlet-leaf-119-v1.ckpt")
+    trainer.fit(model, datamodule=audio_datamodule)
 
 
 if __name__ == "__main__":
@@ -216,6 +201,7 @@ if __name__ == "__main__":
     parser.add_argument("--dataset_name", type=str, default="urbansound8k")
     parser.add_argument("--target_sample_rate", type=int, default=16_000)
     parser.add_argument("--n_samples", type=int, default=24_000)
+    parser.add_argument("--convert_to_mel", action="store_true")
     parser.add_argument("--batch_size", type=int, default=128)
     parser.add_argument("--shuffle", type=bool, default=True)
     parser.add_argument("--num_workers", type=int, default=8)
