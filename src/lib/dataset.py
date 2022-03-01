@@ -5,7 +5,7 @@ import torch
 import torch.nn.functional as F
 import torchaudio
 
-from torch.utils.data import Dataset, DataLoader
+from torch.utils.data import Dataset, DataLoader, random_split
 from typing import List
 
 import random
@@ -220,7 +220,75 @@ class ESC50Dataset(StandardDataset):
         self.CLASS_ID_TO_NAME = dict(set(zip(df["target"], df["category"])))
 
 
+class AudioSetDataset(StandardDataset):
+    def __init__(
+        self,
+        root: str = os.path.join("data", "AudioSet"),
+        pretraining: str = None,
+        target_sample_rate: int = TARGET_SAMPLE_RATE,
+        n_samples: int = N_SAMPLES,
+        folds: List[int] = None,
+    ) -> None:
+
+        """
+        WARNING: OVERWRITES N_SAMPLES TO BE 10X THE TARGET_SAMPLE_RATE TO USE ALL 10 SECONDS OF AUDIO
+        Also, only use the following classes:
+        classes = [
+            "alarm_clock",
+            "car_alarm",
+            "doorbell",
+            "honking",
+            "police_siren",
+            "reversing_beeps",
+            "telephone_ring",
+            "train_horn",
+        ]
+        """
+        super().__init__(root, target_sample_rate, target_sample_rate * 10, pretraining)
+
+
+        self.root = root
+        # classes = [name for name in os.listdir(self.root) if os.path.isdir(os.path.join(self.root, name))]
+        classes = [
+            "alarm_clock",
+            "car_alarm",
+            "doorbell",
+            "honking",
+            "police_siren",
+            "reversing_beeps",
+            "telephone_ring",
+            "train_horn",
+        ]
+        self.CLASS_ID_TO_NAME = dict(zip(range(len(classes)), classes))
+
+        self.file_paths = []
+        self.class_ids = []
+
+        for i, c in enumerate(classes):
+            class_files = [os.path.join(self.root, c, f) for f in os.listdir(os.path.join(self.root, c))]
+            self.file_paths.extend(class_files)
+            self.class_ids.extend([i] * len(class_files))
+
+        self.class_ids = torch.LongTensor(self.class_ids)
+        self.n_folds = None
+
+    # Overwrite split_folds for AudioSet
+    @classmethod
+    def split_folds(cls, dataset: Dataset, n_validation_folds: int = 1):
+        train_len = int(len(dataset) * 0.9)
+        val_len = len(dataset) - train_len
+        train_set, val_set = random_split(dataset, [train_len, val_len])
+
+        return train_set, val_set, None, None
+
+
 class AudioDataModule(pl.LightningDataModule):
+    NAME_TO_DATASET_CLASS = {
+        "urbansound8k": UrbanSound8KDataset,
+        "esc50": ESC50Dataset,
+        "audioset": AudioSetDataset
+    }
+
     def __init__(
         self,
         dataset_name: str,
@@ -239,7 +307,7 @@ class AudioDataModule(pl.LightningDataModule):
         self.pretraining = pretraining
         self.extra_kwargs = {"prefetch_factor": 4, "persistent_workers": True} if self.num_workers > 0 else {}
 
-        dataset_class = UrbanSound8KDataset if dataset_name == "urbansound8k" else ESC50Dataset
+        dataset_class = self.NAME_TO_DATASET_CLASS[dataset_name]
         dataset = dataset_class(pretraining=pretraining, folds=folds)
         print(f"There are {len(dataset)} samples in the {dataset_name} dataset.")
         signal, _ = dataset[1]
@@ -280,7 +348,7 @@ class AudioDataModule(pl.LightningDataModule):
 
 def test():
     dm = AudioDataModule(
-        dataset_name="urbansound8k", batch_size=32, train_ratio=0.9, shuffle=False, num_workers=0, pretraining="simsiam"
+        dataset_name="audioset", batch_size=32, train_ratio=0.9, shuffle=False, num_workers=0, pretraining="simsiam"
     )
     for i, (x, y) in enumerate(dm.train_dataloader()):
         print(x.shape, x.mean(), x.std())
