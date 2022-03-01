@@ -80,7 +80,7 @@ class Model(pl.LightningModule):
             if self.hparams.convert_to_mel:
                 self.model = CustomCNN(width=self.hparams.width, height=self.hparams.height, n_classes=self.hparams.n_classes)
             else:
-                self.model = EnvNet(n_classes=self.hparams.n_classes)
+                self.model = EnvNet(n_classes=self.hparams.n_classes, height=self.hparams.height, width=self.hparams.width)
 
         # QUANTIZATION
         if self.hparams.qat:

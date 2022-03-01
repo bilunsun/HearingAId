@@ -28,6 +28,7 @@ class EnvNet(nn.Module):
 
         x = torch.randn(1, in_channels, height, width)
         x = self.backbone(x)
+        x = x.max(dim=2).values
         x = x.reshape(x.size(0), -1)
         self.latent_dim = x.size(-1)
         # self.conv9 = nn.Conv2d(in_channels=128, out_channels=256, kernel_size=(1, 4), stride=(1, 1))
@@ -68,6 +69,7 @@ class EnvNet(nn.Module):
     def forward(self, x):
         x = self.backbone(x)
 
+        x = x.max(dim=2).values
         x = x.view(x.size(0), self.latent_dim)
 
         x = self.classifier(x)

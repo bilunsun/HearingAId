@@ -255,10 +255,11 @@ class AudioSetDataset(StandardDataset):
         target_sample_rate: int = TARGET_SAMPLE_RATE,
         n_samples: int = N_SAMPLES,
         folds: List[int] = None,
+        convert_to_mel: bool = False,
     ) -> None:
 
         """
-        WARNING: OVERWRITES N_SAMPLES TO BE 10X THE TARGET_SAMPLE_RATE TO USE ALL 10 SECONDS OF AUDIO
+        WARNING: OVERWRITES N_SAMPLES TO BE 5X THE TARGET_SAMPLE_RATE TO USE 5 SECONDS OF AUDIO
         Also, only use the following classes:
         classes = [
             "alarm_clock",
@@ -271,7 +272,7 @@ class AudioSetDataset(StandardDataset):
             "train_horn",
         ]
         """
-        super().__init__(root, target_sample_rate, target_sample_rate * 10, pretraining)
+        super().__init__(root, target_sample_rate, target_sample_rate * 5, pretraining, convert_to_mel)
 
 
         self.root = root
