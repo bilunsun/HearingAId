@@ -5,11 +5,7 @@ from typing import List
 
 
 class EnvNet(nn.Module):
-<<<<<<< HEAD
     def __init__(self, width: int, height: int, n_classes: int, in_channels: int = 1):
-=======
-    def __init__(self, n_classes: int):
->>>>>>> 4882b9486d0eec401f17e9ba0af7bedfb86884fc
         super().__init__()
 
         self.n_classes = n_classes
