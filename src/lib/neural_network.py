@@ -28,19 +28,19 @@ class EnvNet(nn.Module):
         self.bn5 = nn.BatchNorm2d(num_features=64)
         self.conv6 = nn.Conv2d(in_channels=64, out_channels=64, kernel_size=(1, 4), stride=(1, 1))
         self.bn6 = nn.BatchNorm2d(num_features=64)
-        self.pool6 = nn.MaxPool2d(kernel_size=(1, 2), stride=(1, 2))
+        self.pool6 = nn.MaxPool2d(kernel_size=(1, 4), stride=(1, 4))
 
         self.conv7 = nn.Conv2d(in_channels=64, out_channels=128, kernel_size=(1, 2), stride=(1, 1))
         self.bn7 = nn.BatchNorm2d(num_features=128)
         self.conv8 = nn.Conv2d(in_channels=128, out_channels=128, kernel_size=(1, 2), stride=(1, 1))
         self.bn8 = nn.BatchNorm2d(num_features=128)
-        self.pool8 = nn.MaxPool2d(kernel_size=(1, 2), stride=(1, 2))
+        self.pool8 = nn.MaxPool2d(kernel_size=(1, 4), stride=(1, 4))
 
         self.conv9 = nn.Conv2d(in_channels=128, out_channels=256, kernel_size=(1, 2), stride=(1, 1))
         self.bn9 = nn.BatchNorm2d(num_features=256)
         self.conv10 = nn.Conv2d(in_channels=256, out_channels=256, kernel_size=(1, 2), stride=(1, 1))
         self.bn10 = nn.BatchNorm2d(num_features=256)
-        self.pool10 = nn.MaxPool2d(kernel_size=(1, 2), stride=(1, 2))
+        self.pool10 = nn.MaxPool2d(kernel_size=(1, 4), stride=(1, 4))
 
         x = torch.randn(1, in_channels, height, width)
         x = self.backbone(x)

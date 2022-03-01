@@ -248,6 +248,8 @@ class ESC50Dataset(StandardDataset):
 
 
 class AudioSetDataset(StandardDataset):
+    N_SECONDS = 10
+
     def __init__(
         self,
         root: str = os.path.join("data", "AudioSet"),
@@ -272,7 +274,7 @@ class AudioSetDataset(StandardDataset):
             "train_horn",
         ]
         """
-        super().__init__(root, target_sample_rate, target_sample_rate * 5, pretraining, convert_to_mel)
+        super().__init__(root, target_sample_rate, int(target_sample_rate * self.N_SECONDS), pretraining, convert_to_mel)
 
 
         self.root = root
