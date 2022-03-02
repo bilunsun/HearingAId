@@ -40,7 +40,7 @@ class EnvNet(nn.Module):
         self.bn9 = nn.BatchNorm2d(num_features=256)
         self.conv10 = nn.Conv2d(in_channels=256, out_channels=256, kernel_size=(1, 2), stride=(1, 1))
         self.bn10 = nn.BatchNorm2d(num_features=256)
-        self.pool10 = nn.MaxPool2d(kernel_size=(1, 4), stride=(1, 4))
+        self.pool10 = nn.MaxPool2d(kernel_size=(1, 2), stride=(1, 2))
 
         x = torch.randn(1, in_channels, height, width)
         x = self.backbone(x)
@@ -183,16 +183,16 @@ def test_custom_cnn():
 
 
 def test_env_net():
-    model = EnvNet(n_classes=10)
+    model = EnvNet(n_classes=10, width=16_000*4, height=1, classifier_hidden_dims=512)
 
     n_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
     print(n_params)
 
-    x = torch.randn(32, 1, 1, 44_100)
+    x = torch.randn(1, 1, 1, 16_000*4)
     out = model(x)
     print(out.shape)
 
 
 if __name__ == "__main__":
-    test_custom_cnn()
-    # test_env_net()
+    # test_custom_cnn()
+    test_env_net()

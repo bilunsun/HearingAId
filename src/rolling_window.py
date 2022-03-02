@@ -66,10 +66,11 @@ def classify(raw_data: deque, target_sample_rate: int = TARGET_SAMPLE_RATE):
     waveform = torch.from_numpy(window).reshape(1, 1, 1, -1).float()
 
     resample = torchaudio.transforms.Resample(RATE, target_sample_rate)
-    resampled_waveform = resample(waveform).cuda()
+    x = resample(waveform)
+    x = model.scaler.transform(x).cuda()
 
     with torch.no_grad():
-        pred = F.softmax(model(resampled_waveform), dim=1)
+        pred = F.softmax(model(x), dim=1)
 
     max_index = torch.argmax(pred, dim=1)
     print(classes[max_index], pred)

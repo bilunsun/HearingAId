@@ -248,7 +248,7 @@ class ESC50Dataset(StandardDataset):
 
 
 class AudioSetDataset(StandardDataset):
-    N_SECONDS = 10
+    N_SECONDS = 4
 
     def __init__(
         self,
