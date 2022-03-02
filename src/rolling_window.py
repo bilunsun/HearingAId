@@ -1,4 +1,3 @@
-import numpy as np
 import pyaudio
 import time
 import torch
@@ -55,31 +54,26 @@ def yield_data(dq: deque, lock: Lock, exit_signal: Event):
     p = pyaudio.PyAudio()
     stream = p.open(format=pyaudio.paInt16, channels=CHANNELS, rate=SAMPLE_RATE, input=True, frames_per_buffer=CHUNK)
 
-    while True:  # Test without infinite loop for now
-        if exit_signal.is_set():
-            break
-
-        data = np.frombuffer(stream.read(CHUNK), dtype=np.int16)
-
+    while not exit_signal.is_set():
         with lock:
-            dq.append(data)
+            dq.append(stream.read(CHUNK))
 
     stream.stop_stream()
     stream.close()
     p.terminate()
 
 
-def classify(raw_data: deque):
-    window = np.concatenate(raw_data)
-    waveform = torch.from_numpy(window).reshape(1, 1, 1, -1).float()
-    x = waveform.to(device)
+@torch.no_grad()
+def classify(x: deque):
+    x = torch.frombuffer(b"".join(x), dtype=torch.int16)
+
+    x = x.reshape(1, 1, 1, -1).float().to(device)
     x = model.scaler.transform(x)
+    x = model(x)
+    x = F.softmax(x, dim=1)
 
-    with torch.no_grad():
-        pred = F.softmax(model(x), dim=1)
-
-    max_index = torch.argmax(pred, dim=1)
-    print(classes[max_index], pred)
+    max_index = torch.argmax(x, dim=1).item()
+    # print(classes[max_index], x)
 
 
 # Putting as globals to kill on exit
@@ -100,7 +94,7 @@ def main(args):
         raw_data = list(dq)  # The 'lock' object does not seem to be necessary for reading
 
         if len(raw_data) < buffer_len:
-            time.sleep(2)
+            time.sleep(WINDOW_TIME_S)
             continue
 
         start = time.time()
@@ -116,7 +110,7 @@ def main(args):
 if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
-    parser.add_argument('--num_runs', type=int, default=100)
+    parser.add_argument('--num_runs', type=int, default=1000)
 
     args = parser.parse_args()
 
