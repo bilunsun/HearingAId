@@ -102,9 +102,14 @@ class Model(pl.LightningModule):
 
         pred = self(x)
         loss = F.cross_entropy(pred, y)
+
+        y_hat = torch.argmax(pred, dim=1)
+        accuracy = (y == y_hat).float().mean()
+
         self.log("train_loss", loss, prog_bar=True, logger=True)
         self.log("train_mean", x.mean(), prog_bar=True, logger=True)
         self.log("train_std", x.std(), prog_bar=True, logger=True)
+        self.log("train_accuracy", accuracy, prog_bar=True, logger=True)
 
         return loss
 

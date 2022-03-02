@@ -264,14 +264,29 @@ class AudioSetDataset(StandardDataset):
         WARNING: OVERWRITES N_SAMPLES TO BE 5X THE TARGET_SAMPLE_RATE TO USE 5 SECONDS OF AUDIO
         Also, only use the following classes:
         classes = [
+            "acoustic_guitar",
             "alarm_clock",
+            "bell",
+            "bird",
+            "brass_instrument",
             "car_alarm",
+            "cat",
+            "dog",
             "doorbell",
+            "drum_kit",
+            "explosion",
+            "helicopter",
             "honking",
+            "laughter",
+            "plucked_string_instrument",
             "police_siren",
+            "rapping",
             "reversing_beeps",
+            "singing",
+            "speech",
             "telephone_ring",
             "train_horn",
+            "water",
         ]
         """
         super().__init__(root, target_sample_rate, int(target_sample_rate * self.N_SECONDS), pretraining, convert_to_mel)
@@ -280,14 +295,29 @@ class AudioSetDataset(StandardDataset):
         self.root = root
         # classes = [name for name in os.listdir(self.root) if os.path.isdir(os.path.join(self.root, name))]
         classes = [
+            "acoustic_guitar",
             "alarm_clock",
+            "bell",
+            "bird",
+            "brass_instrument",
             "car_alarm",
+            "cat",
+            "dog",
             "doorbell",
+            "drum_kit",
+            "explosion",
+            "helicopter",
             "honking",
+            "laughter",
+            "plucked_string_instrument",
             "police_siren",
+            "rapping",
             "reversing_beeps",
+            "singing",
+            "speech",
             "telephone_ring",
             "train_horn",
+            "water",
         ]
         self.CLASS_ID_TO_NAME = dict(zip(range(len(classes)), classes))
 
