@@ -6,6 +6,7 @@ import torch.nn.functional as F
 import torchaudio
 from collections import deque
 from threading import Event, Lock, Thread
+import argparse
 
 from lib.audio_utils import plot_melspectrogram
 from train import Model
@@ -84,22 +85,37 @@ exit_signal = Event()
 data_thread = Thread(target=yield_data, args=(dq, lock, exit_signal,))
 
 
-def main():
+def main(args):
     data_thread.start()
 
-    while True:
+    infer_times = []
+
+    for i in range(args.num_runs):
         raw_data = list(dq)  # The 'lock' object does not seem to be necessary for reading
 
         if len(raw_data) < buffer_len:
             time.sleep(2)
             continue
 
+        start = time.time()
         classify(raw_data)
+        end = time.time()
+
+        infer_times.append(end-start)
+
+    avg_infer = sum(infer_times[1::]) / (len(infer_times) - 1)
+    print(f'Average Inference Time: {avg_infer * 1000:.3f} ms')
 
 
 if __name__ == "__main__":
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--num_runs', type=int, default=100)
+
+    args = parser.parse_args()
+
     try:
-        main()
+        main(args)
     except:
         exit_signal.set()
         data_thread.join()
