@@ -13,10 +13,9 @@ from train import Model
 
 
 CHANNELS = 1
-CHUNK = 1024
-RATE = 44100
-TARGET_SAMPLE_RATE = 16_000
-WINDOW_TIME_S = 10
+CHUNK = 1_600
+SAMPLE_RATE = 16_000
+WINDOW_TIME_S = 4
 
 
 model = Model.load_from_checkpoint("checkpoints/fearless-spaceship-160.ckpt")
@@ -37,7 +36,7 @@ classes = [
 
 def yield_data(dq: deque, lock: Lock, exit_signal: Event):
     p = pyaudio.PyAudio()
-    stream = p.open(format=pyaudio.paInt16, channels=CHANNELS, rate=RATE, input=True, frames_per_buffer=CHUNK)
+    stream = p.open(format=pyaudio.paInt16, channels=CHANNELS, rate=SAMPLE_RATE, input=True, frames_per_buffer=CHUNK)
 
     while True:  # Test without infinite loop for now
         if exit_signal.is_set():
@@ -53,22 +52,10 @@ def yield_data(dq: deque, lock: Lock, exit_signal: Event):
     p.terminate()
 
 
-def visualize(raw_data: deque, target_sample_rate: int = TARGET_SAMPLE_RATE):
-    window = np.concatenate(raw_data)
-    waveform = torch.from_numpy(window).unsqueeze(0).float()
-
-    resample = torchaudio.transforms.Resample(RATE, target_sample_rate)
-    resampled_waveform = resample(waveform)
-    plot_melspectrogram(resampled_waveform, target_sample_rate)
-
-
-def classify(raw_data: deque, target_sample_rate: int = TARGET_SAMPLE_RATE):
+def classify(raw_data: deque):
     window = np.concatenate(raw_data)
     waveform = torch.from_numpy(window).reshape(1, 1, 1, -1).float()
-
-    resample = torchaudio.transforms.Resample(RATE, target_sample_rate)
-    x = resample(waveform)
-    x = model.scaler.transform(x).cuda()
+    x = model.scaler.transform(waveform).cuda()
 
     with torch.no_grad():
         pred = F.softmax(model(x), dim=1)
@@ -80,7 +67,7 @@ def classify(raw_data: deque, target_sample_rate: int = TARGET_SAMPLE_RATE):
 # Putting as globals to kill on exit
 # Gross.
 lock = Lock()
-buffer_len = int(RATE / CHUNK * WINDOW_TIME_S)
+buffer_len = int(SAMPLE_RATE / CHUNK * WINDOW_TIME_S)
 dq = deque(maxlen=buffer_len)
 exit_signal = Event()
 data_thread = Thread(target=yield_data, args=(dq, lock, exit_signal,))
