@@ -24,7 +24,7 @@ class Model(pl.LightningModule):
 
         parser.add_argument("--width", type=int, default=None)
         parser.add_argument("--height", type=int, default=None)
-        parser.add_argument("--classifier_hidden_dims", type=int, default=1024)
+        parser.add_argument("--classifier_hidden_dims", type=int, default=512)
         parser.add_argument("--n_classes", type=int, default=10)
 
         parser.add_argument("--transfer_ckpt", type=str, default=None)
