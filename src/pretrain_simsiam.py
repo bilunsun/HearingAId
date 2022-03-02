@@ -36,9 +36,13 @@ class PretrainSimSiam(pl.LightningModule):
         self.save_hyperparameters()
 
         if self.hparams.get("convert_to_mel"):
-            self.backbone = CustomCNN(width=self.hparams.width, height=self.hparams.height, n_classes=self.hparams.n_classes)
+            self.backbone = CustomCNN(
+                width=self.hparams.width, height=self.hparams.height, n_classes=self.hparams.n_classes
+            )
         else:
-            self.backbone = EnvNet(n_classes=self.hparams.n_classes, width=self.hparams.width, height=self.hparams.height)
+            self.backbone = EnvNet(
+                n_classes=self.hparams.n_classes, width=self.hparams.width, height=self.hparams.height
+            )
 
         self.backbone.classifier = nn.Identity()
 
@@ -52,21 +56,18 @@ class PretrainSimSiam(pl.LightningModule):
             nn.BatchNorm1d(self.hparams.hidden_dim),
             nn.ReLU(inplace=True),
             nn.Linear(self.hparams.hidden_dim, self.hparams.out_dim),
-            nn.BatchNorm1d(self.hparams.hidden_dim)
+            nn.BatchNorm1d(self.hparams.hidden_dim),
         )
 
         # Encoder
-        self.f = nn.Sequential(
-            self.backbone,
-            self.projection_mlp
-        )
+        self.f = nn.Sequential(self.backbone, self.projection_mlp)
 
         # Predictor
         self.h = nn.Sequential(
             nn.Linear(self.hparams.hidden_dim, self.hparams.hidden_dim),
             nn.BatchNorm1d(self.hparams.hidden_dim),
             nn.ReLU(inplace=True),
-            nn.Linear(self.hparams.hidden_dim, self.hparams.out_dim)
+            nn.Linear(self.hparams.hidden_dim, self.hparams.out_dim),
         )
 
         self.optimizer = torch.optim.Adam(self.parameters(), lr=self.hparams.lr)

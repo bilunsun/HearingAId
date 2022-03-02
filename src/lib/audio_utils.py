@@ -5,8 +5,10 @@ try:
     import librosa
 except ImportError:
     librosa = False
-    print('Module librosa not found. Proceeding without.\n' +
-          'If you are on the Jetson Nano/Raspberry Pi, ignore this warning.')
+    print(
+        "Module librosa not found. Proceeding without.\n"
+        + "If you are on the Jetson Nano/Raspberry Pi, ignore this warning."
+    )
 
 import matplotlib.pyplot as plt
 import torch
@@ -78,12 +80,7 @@ def plot_spectrogram(spectrogram, title=None, ylabel="Frequency bin", aspect="au
 
 def plot_melspectrogram(waveform, sample_rate, n_fft=1024, hop_length=512, win_length=None, n_mels=64, norm="slaney"):
     mel_spectrogram = torchaudio.transforms.MelSpectrogram(
-        sample_rate=sample_rate,
-        n_fft=n_fft,
-        hop_length=hop_length,
-        win_length=win_length,
-        n_mels=n_mels,
-        norm=norm
+        sample_rate=sample_rate, n_fft=n_fft, hop_length=hop_length, win_length=win_length, n_mels=n_mels, norm=norm
     )
     spectrogram = mel_spectrogram(waveform)  # Remove batch dimension
     if len(spectrogram.shape) == 4:
@@ -211,8 +208,16 @@ def main(args):
         resample = torchaudio.transforms.Resample(sample_rate, args.target_sample_rate)
         waveform = resample(waveform)
 
-    waveform = waveform[:, :args.target_sample_rate]
-    mel_spectrogram = plot_melspectrogram(waveform, args.target_sample_rate, n_fft=args.n_fft, hop_length=args.hop_length, win_length=args.win_length, n_mels=args.n_mels, norm=args.norm)
+    waveform = waveform[:, : args.target_sample_rate]
+    mel_spectrogram = plot_melspectrogram(
+        waveform,
+        args.target_sample_rate,
+        n_fft=args.n_fft,
+        hop_length=args.hop_length,
+        win_length=args.win_length,
+        n_mels=args.n_mels,
+        norm=args.norm,
+    )
     plot_x_distribution(mel_spectrogram)
 
 
@@ -237,5 +242,3 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     main(args)
-
-

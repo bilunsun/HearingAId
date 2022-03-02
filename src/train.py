@@ -52,14 +52,16 @@ class Model(pl.LightningModule):
                 self.model.classifier[-1] = nn.Linear(self.model.classifier[-1].in_features, self.hparams.n_classes)
 
         elif self.hparams.mix_ckpt is not None:
-            ckpt = PretrainMix.load_from_checkpoint(self.hparams.mix_ckpt, width=self.hparams.width, height=self.hparams.height)
+            ckpt = PretrainMix.load_from_checkpoint(
+                self.hparams.mix_ckpt, width=self.hparams.width, height=self.hparams.height
+            )
             self.scaler = ckpt.scaler
             self.model = ckpt.backbone
 
             self.model.classifier = nn.Sequential(
                 nn.Linear(self.model.classifier[-1].in_features, self.hparams.classifier_hidden_dims),
                 nn.ReLU(inplace=True),
-                nn.Linear(self.hparams.classifier_hidden_dims, self.hparams.n_classes)
+                nn.Linear(self.hparams.classifier_hidden_dims, self.hparams.n_classes),
             )
 
         elif self.hparams.simsiam_ckpt is not None:
@@ -70,13 +72,16 @@ class Model(pl.LightningModule):
             self.model = nn.Sequential(
                 ckpt.backbone,
                 nn.Sequential(
-                    nn.Linear(ckpt.latent_dim, 1024),
-                    nn.ReLU(inplace=True),
-                    nn.Linear(1024, self.hparams.n_classes)
-                )
+                    nn.Linear(ckpt.latent_dim, 1024), nn.ReLU(inplace=True), nn.Linear(1024, self.hparams.n_classes)
+                ),
             )
         else:
-            self.model = EnvNet(n_classes=self.hparams.n_classes, height=self.hparams.height, width=self.hparams.width, classifier_hidden_dims=self.hparams.classifier_hidden_dims)
+            self.model = EnvNet(
+                n_classes=self.hparams.n_classes,
+                height=self.hparams.height,
+                width=self.hparams.width,
+                classifier_hidden_dims=self.hparams.classifier_hidden_dims,
+            )
 
         # QUANTIZATION
         if self.hparams.qat:
@@ -201,7 +206,7 @@ def main(args):
         callbacks=callbacks,
         max_epochs=configs["max_epochs"],
         check_val_every_n_epoch=configs["check_val_every_n_epoch"],
-        stochastic_weight_avg=True
+        stochastic_weight_avg=True,
     )
 
     trainer.fit(model, datamodule=audio_datamodule)

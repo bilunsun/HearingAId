@@ -290,8 +290,9 @@ class AudioSetDataset(StandardDataset):
             "water",
         ]
         """
-        super().__init__(root, target_sample_rate, int(target_sample_rate * self.N_SECONDS), pretraining, convert_to_mel)
-
+        super().__init__(
+            root, target_sample_rate, int(target_sample_rate * self.N_SECONDS), pretraining, convert_to_mel
+        )
 
         self.root = root
         # classes = [name for name in os.listdir(self.root) if os.path.isdir(os.path.join(self.root, name))]
@@ -345,11 +346,7 @@ class AudioSetDataset(StandardDataset):
 
 
 class AudioDataModule(pl.LightningDataModule):
-    NAME_TO_DATASET_CLASS = {
-        "urbansound8k": UrbanSound8KDataset,
-        "esc50": ESC50Dataset,
-        "audioset": AudioSetDataset
-    }
+    NAME_TO_DATASET_CLASS = {"urbansound8k": UrbanSound8KDataset, "esc50": ESC50Dataset, "audioset": AudioSetDataset}
 
     def __init__(
         self,
@@ -374,7 +371,9 @@ class AudioDataModule(pl.LightningDataModule):
         self.extra_kwargs = {"prefetch_factor": 4, "persistent_workers": True} if self.num_workers > 0 else {}
 
         dataset_class = self.NAME_TO_DATASET_CLASS[dataset_name]
-        dataset = dataset_class(pretraining=pretraining, folds=folds, target_sample_rate=target_sample_rate, n_samples=n_samples)
+        dataset = dataset_class(
+            pretraining=pretraining, folds=folds, target_sample_rate=target_sample_rate, n_samples=n_samples
+        )
         print(f"There are {len(dataset)} samples in the {dataset_name} dataset.")
         signal, _ = dataset[1]
 

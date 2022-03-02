@@ -5,8 +5,9 @@ from typing import List
 
 
 class EnvNet(nn.Module):
-
-    def __init__(self, width: int, height: int, n_classes: int, in_channels: int = 1, classifier_hidden_dims: int = 1024):
+    def __init__(
+        self, width: int, height: int, n_classes: int, in_channels: int = 1, classifier_hidden_dims: int = 1024
+    ):
         super().__init__()
 
         self.n_classes = n_classes
@@ -99,7 +100,15 @@ class Separable3x3Conv2d(nn.Module):
     def __init__(self, in_channels: int, out_channels: int, stride: int = 1, bias: bool = False) -> None:
         super().__init__()
 
-        self.depthwise = nn.Conv2d(in_channels=in_channels, out_channels=in_channels, stride=stride, kernel_size=3, padding=1, groups=in_channels, bias=bias)
+        self.depthwise = nn.Conv2d(
+            in_channels=in_channels,
+            out_channels=in_channels,
+            stride=stride,
+            kernel_size=3,
+            padding=1,
+            groups=in_channels,
+            bias=bias,
+        )
         self.pointwise = nn.Conv2d(in_channels=in_channels, out_channels=out_channels, kernel_size=1, bias=bias)
 
         self.activation = nn.ReLU(inplace=True)
@@ -125,7 +134,7 @@ class CustomCNN(nn.Module):
         hidden_channels: List[int] = [32, 64, 128, 256, 512],
         classifier_hidden_dims: int = 1024,
         n_classes: int = 10,
-        qat: bool = False
+        qat: bool = False,
     ):
         super().__init__()
 
@@ -135,9 +144,12 @@ class CustomCNN(nn.Module):
         self.in_conv = nn.Conv2d(in_channels=in_channels, out_channels=hidden_channels[0], kernel_size=3, stride=2)
 
         hidden_channels = [in_channels] + hidden_channels
-        self.sep_conv_blocks = nn.ModuleList([
-            Separable3x3Conv2d(in_channels=ic, out_channels=io, stride=2) for ic, io in zip(hidden_channels[:-1], hidden_channels[1:])
-        ])
+        self.sep_conv_blocks = nn.ModuleList(
+            [
+                Separable3x3Conv2d(in_channels=ic, out_channels=io, stride=2)
+                for ic, io in zip(hidden_channels[:-1], hidden_channels[1:])
+            ]
+        )
 
         x = torch.randn(1, in_channels, height, width)
         for conv in self.sep_conv_blocks:
@@ -148,7 +160,7 @@ class CustomCNN(nn.Module):
         self.classifier = nn.Sequential(
             nn.Linear(self.latent_dim, classifier_hidden_dims),
             nn.ReLU(inplace=True),
-            nn.Linear(classifier_hidden_dims, n_classes)
+            nn.Linear(classifier_hidden_dims, n_classes),
         )
 
         self.quant = torch.quantization.QuantStub() if qat else nn.Identity()
@@ -183,12 +195,12 @@ def test_custom_cnn():
 
 
 def test_env_net():
-    model = EnvNet(n_classes=10, width=16_000*4, height=1, classifier_hidden_dims=512)
+    model = EnvNet(n_classes=10, width=16_000 * 4, height=1, classifier_hidden_dims=512)
 
     n_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
     print(n_params)
 
-    x = torch.randn(1, 1, 1, 16_000*4)
+    x = torch.randn(1, 1, 1, 16_000 * 4)
     out = model(x)
     print(out.shape)
 

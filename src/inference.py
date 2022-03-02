@@ -1,4 +1,3 @@
-
 import time
 import torch
 import torchaudio.transforms
@@ -7,12 +6,15 @@ from train import Model
 
 TARGET_SAMPLE_RATE = 22050
 N_SAMPLES = 22050
-TO_MELSPECTROGRAM = torchaudio.transforms.MelSpectrogram(sample_rate=TARGET_SAMPLE_RATE, n_fft=1024, hop_length=512, n_mels=64)
+TO_MELSPECTROGRAM = torchaudio.transforms.MelSpectrogram(
+    sample_rate=TARGET_SAMPLE_RATE, n_fft=1024, hop_length=512, n_mels=64
+)
 
 # Quantization Engine for Pi 4 and Jetson Nano
 import platform
-if platform.system() == 'Linux':
-    torch.backends.quantized.engine = 'qnnpack'
+
+if platform.system() == "Linux":
+    torch.backends.quantized.engine = "qnnpack"
 
 model = Model.load_from_checkpoint("src/checkpoints/autumn-wind-80.ckpt")
 model, scaler = model.model, model.scaler
@@ -20,6 +22,7 @@ model, scaler = model.model, model.scaler
 # Quantization aware training
 model.eval()
 model_int8 = torch.quantization.convert(model)
+
 
 def preprocess(t_data, sample_rate, resample):
 
@@ -45,7 +48,6 @@ def preprocess(t_data, sample_rate, resample):
     t_data = t_data.unsqueeze(0)
 
     return t_data
-
 
 
 t_data, sample_rate = torchaudio.load("data/UrbanSound8K/audio/fold1/7061-6-0-0.wav")

@@ -8,7 +8,9 @@ from train import Model
 
 TARGET_SAMPLE_RATE = 22050
 N_SAMPLES = 22050
-TO_MELSPECTROGRAM = torchaudio.transforms.MelSpectrogram(sample_rate=TARGET_SAMPLE_RATE, n_fft=1024, hop_length=512, n_mels=64)
+TO_MELSPECTROGRAM = torchaudio.transforms.MelSpectrogram(
+    sample_rate=TARGET_SAMPLE_RATE, n_fft=1024, hop_length=512, n_mels=64
+)
 CLASS_IDS = [
     "air_conditioner",
     "car_horn",
