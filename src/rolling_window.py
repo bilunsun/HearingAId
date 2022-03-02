@@ -3,11 +3,9 @@ import pyaudio
 import time
 import torch
 import torch.nn.functional as F
-import torchaudio
 from collections import deque
 from threading import Event, Lock, Thread
 
-from lib.audio_utils import plot_melspectrogram
 from train import Model
 
 
@@ -17,19 +15,38 @@ SAMPLE_RATE = 16_000
 WINDOW_TIME_S = 4
 
 
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 model = Model.load_from_checkpoint("checkpoints/fearless-spaceship-160.ckpt")
-model = model.cuda()
+model = model.to(device)
+model.scaler.to(device)
 model = model.eval()
 
+
 classes = [
+    "acoustic_guitar",
     "alarm_clock",
+    "bell",
+    "bird",
+    "brass_instrument",
     "car_alarm",
+    "cat",
+    "dog",
     "doorbell",
+    "drum_kit",
+    "explosion",
+    "helicopter",
     "honking",
+    "laughter",
+    "plucked_string_instrument",
     "police_siren",
+    "rapping",
     "reversing_beeps",
+    "silence",
+    "singing",
+    "speech",
     "telephone_ring",
     "train_horn",
+    "water",
 ]
 
 
@@ -54,7 +71,8 @@ def yield_data(dq: deque, lock: Lock, exit_signal: Event):
 def classify(raw_data: deque):
     window = np.concatenate(raw_data)
     waveform = torch.from_numpy(window).reshape(1, 1, 1, -1).float()
-    x = model.scaler.transform(waveform).cuda()
+    x = waveform.to(device)
+    x = model.scaler.transform(x)
 
     with torch.no_grad():
         pred = F.softmax(model(x), dim=1)
