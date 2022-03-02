@@ -8,7 +8,7 @@ from pytorch_lightning.loggers import WandbLogger
 from torch import nn
 from tqdm.auto import tqdm
 
-from lib import AudioDataModule, CustomCNN, EnvNet, StandardScaler, MelScaler
+from lib import AudioDataModule, EnvNet, StandardScaler, MelScaler
 from pretrain_mix import PretrainMix
 from pretrain_simsiam import PretrainSimSiam
 
@@ -24,8 +24,7 @@ class Model(pl.LightningModule):
 
         parser.add_argument("--width", type=int, default=None)
         parser.add_argument("--height", type=int, default=None)
-        parser.add_argument("--hidden_channels", type=int, nargs="+", default=[64, 256, 512])
-        parser.add_argument("--classifier_hidden_dims", type=int, default=256)
+        parser.add_argument("--classifier_hidden_dims", type=int, default=1024)
         parser.add_argument("--n_classes", type=int, default=10)
 
         parser.add_argument("--transfer_ckpt", type=str, default=None)
@@ -50,37 +49,26 @@ class Model(pl.LightningModule):
             self.model = ckpt.backbone
 
             self.model.classifier = nn.Sequential(
-                nn.Linear(self.model.classifier[-1].in_features, 1024),
+                nn.Linear(self.model.classifier[-1].in_features, self.hparams.classifier_hidden_dims),
                 nn.ReLU(inplace=True),
-                nn.Linear(1024, self.hparams.n_classes)
+                nn.Linear(self.hparams.classifier_hidden_dims, self.hparams.n_classes)
             )
 
-            # if self.model.classifier[-1].out_features != self.hparams.n_classes:
-            #     self.model.classifier[-1] = nn.Linear(self.model.classifier[-1].in_features, self.hparams.n_classes)
         elif self.hparams.simsiam_ckpt is not None:
             ckpt = PretrainSimSiam.load_from_checkpoint(self.hparams.simsiam_ckpt, strict=False)
             self.scaler = ckpt.scaler
 
             # SimSiam pretrained models need a classifier
-            classifier = nn.Sequential(
-                nn.Linear(ckpt.latent_dim, 1024),
-                nn.ReLU(inplace=True),
-                nn.Linear(1024, self.hparams.n_classes)
-            )
-
-            self.backbone = ckpt.backbone
-            # for p in self.backbone.parameters():
-            #     p.requires_grad = False
-
             self.model = nn.Sequential(
-                self.backbone,
-                classifier
+                ckpt.backbone,
+                nn.Sequential(
+                    nn.Linear(ckpt.latent_dim, 1024),
+                    nn.ReLU(inplace=True),
+                    nn.Linear(1024, self.hparams.n_classes)
+                )
             )
         else:
-            if self.hparams.convert_to_mel:
-                self.model = CustomCNN(width=self.hparams.width, height=self.hparams.height, n_classes=self.hparams.n_classes)
-            else:
-                self.model = EnvNet(n_classes=self.hparams.n_classes, height=self.hparams.height, width=self.hparams.width)
+            self.model = EnvNet(n_classes=self.hparams.n_classes, height=self.hparams.height, width=self.hparams.width, classifier_hidden_dims=self.hparams.classifier_hidden_dims)
 
         # QUANTIZATION
         if self.hparams.qat:
@@ -155,18 +143,13 @@ class Model(pl.LightningModule):
 
     def on_validation_epoch_end(self, *args) -> None:
         """
-        Used to plot the confusion matrix
+        Used to log the mean accuracy over the entire validation set
         """
         y = torch.cat(self._y).cpu().numpy()
         y_hat = torch.cat(self._y_hat).cpu().numpy()
 
         accuracy = (y == y_hat).mean()  # Need to cast Long tensor to Float
         self.log("val_accuracy", accuracy, prog_bar=True, logger=True)
-
-        # # import pdb; pdb.set_trace()
-        # self.logger.experiment.log(
-        #     {"Confusion Matrix": wandb.plot.confusion_matrix(y_true=y, preds=y_hat, class_names=self.class_names,)}
-        # )
 
         # Reset
         self._y = []

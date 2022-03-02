@@ -5,12 +5,12 @@ from typing import List
 
 
 class EnvNet(nn.Module):
-    CLASSIFIER_HIDDEN_DIM = 1024
 
-    def __init__(self, width: int, height: int, n_classes: int, in_channels: int = 1):
+    def __init__(self, width: int, height: int, n_classes: int, in_channels: int = 1, classifier_hidden_dims: int = 1024):
         super().__init__()
 
         self.n_classes = n_classes
+        self.classifier_hidden_dims = classifier_hidden_dims
 
         self.conv1 = nn.Conv2d(in_channels=1, out_channels=32, kernel_size=(1, 64), stride=(1, 2))
         self.bn1 = nn.BatchNorm2d(num_features=32)
@@ -49,13 +49,13 @@ class EnvNet(nn.Module):
         self.latent_dim = x.size(-1)
 
         self.classifier = nn.Sequential(
-            nn.Linear(self.latent_dim, self.CLASSIFIER_HIDDEN_DIM),
+            nn.Linear(self.latent_dim, self.classifier_hidden_dims),
             nn.Dropout(p=0.5),
             nn.ReLU(inplace=True),
-            nn.Linear(self.CLASSIFIER_HIDDEN_DIM, self.CLASSIFIER_HIDDEN_DIM),
+            nn.Linear(self.classifier_hidden_dims, self.classifier_hidden_dims),
             nn.Dropout(p=0.5),
             nn.ReLU(inplace=True),
-            nn.Linear(self.CLASSIFIER_HIDDEN_DIM, n_classes),
+            nn.Linear(self.classifier_hidden_dims, n_classes),
         )
 
     def backbone(self, x):
@@ -86,7 +86,6 @@ class EnvNet(nn.Module):
     def forward(self, x):
         x = self.backbone(x)
 
-        # x = x.max(dim=3).values
         x = x.view(x.size(0), self.latent_dim)
 
         x = self.classifier(x)
