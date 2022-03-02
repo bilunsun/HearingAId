@@ -72,7 +72,7 @@ def classify(x: deque):
     x = F.softmax(x, dim=1)
 
     max_index = torch.argmax(x, dim=1).item()
-    print(classes[max_index], x)
+    print(classes[max_index])
 
 
 # Putting as globals to kill on exit
