@@ -43,7 +43,15 @@ class Model(pl.LightningModule):
 
         self.scaler = MelScaler(size=()) if self.hparams.convert_to_mel else StandardScaler(size=())
 
-        if self.hparams.mix_ckpt is not None:
+        if self.hparams.transfer_ckpt is not None:
+            ckpt = Model.load_from_checkpoint(self.hparams.transfer_ckpt, transfer_ckpt=None)
+            self.scaler = ckpt.scaler
+            self.model = ckpt.model
+
+            if self.model.classifier[-1].out_features != self.hparams.n_classes:
+                self.model.classifier[-1] = nn.Linear(self.model.classifier[-1].in_features, self.hparams.n_classes)
+
+        elif self.hparams.mix_ckpt is not None:
             ckpt = PretrainMix.load_from_checkpoint(self.hparams.mix_ckpt, width=self.hparams.width, height=self.hparams.height)
             self.scaler = ckpt.scaler
             self.model = ckpt.backbone
