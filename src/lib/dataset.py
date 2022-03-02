@@ -29,8 +29,8 @@ def preprocess(
     n_samples: int = N_SAMPLES,
     convert_to_mel: bool = False,
 ):
-    # # Normalize
-    # x = x / 32768
+    # Normalize
+    x = x / 32768
 
     # Resample
     if sample_rate != target_sample_rate:
@@ -103,7 +103,7 @@ class StandardDataset(Dataset):
         return x
 
     def _regular_getitem(self, index: int, scale_augment: bool = True, gain_augment: bool = True):
-        x, sample_rate = torchaudio.load(self.file_paths[index], normalize=True)  # TODO: normalize=False
+        x, sample_rate = torchaudio.load(self.file_paths[index], normalize=False)  # TODO: normalize=False
 
         # Reshape
         if len(x.shape) == 1:

@@ -67,6 +67,7 @@ def classify(x: deque):
     x = torch.frombuffer(b"".join(x), dtype=torch.int16)
 
     x = x.reshape(1, 1, 1, -1).float().to(device)
+    x /= 2**15
     x = model.scaler.transform(x)
     x = model(x)
     x = F.softmax(x, dim=1)
