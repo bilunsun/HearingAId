@@ -344,11 +344,48 @@ class AudioSetDataset(StandardDataset):
         return train_set, val_set, None, None
 
 
+class CustomDataset(StandardDataset):
+
+    def __init__(
+        self,
+        root: str = os.path.join("data", "collected_data"),
+        pretraining: str = None,
+        target_sample_rate: int = TARGET_SAMPLE_RATE,
+        n_samples: int = N_SAMPLES,
+        folds: List[int] = None,
+        convert_to_mel: bool = False,
+    ) -> None:
+        super().__init__(root, target_sample_rate, n_samples, pretraining, convert_to_mel)
+
+
+        self.root = root
+
+        self.file_paths = [os.path.join(self.root, f) for f in os.listdir(self.root)]
+        classes = sorted(list(set([f.split("_")[0] for f in os.listdir(self.root)])))
+
+        self.CLASS_ID_TO_NAME = dict(zip(range(len(classes)), classes))
+
+        self.class_ids = [classes.index(f.split("_")[0]) for f in os.listdir(self.root)]
+
+        self.class_ids = torch.LongTensor(self.class_ids)
+        self.n_folds = None
+
+    # Overwrite split_folds for AudioSet
+    @classmethod
+    def split_folds(cls, dataset: Dataset, n_validation_folds: int = 1):
+        train_len = int(len(dataset) * 0.9)
+        val_len = len(dataset) - train_len
+        train_set, val_set = random_split(dataset, [train_len, val_len])
+
+        return train_set, val_set, None, None
+
+
 class AudioDataModule(pl.LightningDataModule):
     NAME_TO_DATASET_CLASS = {
         "urbansound8k": UrbanSound8KDataset,
         "esc50": ESC50Dataset,
-        "audioset": AudioSetDataset
+        "audioset": AudioSetDataset,
+        "custom": CustomDataset
     }
 
     def __init__(
@@ -414,13 +451,12 @@ class AudioDataModule(pl.LightningDataModule):
 
 def test():
     dm = AudioDataModule(
-        dataset_name="urbansound8k",
-        batch_size=32,
+        dataset_name="custom",
+        batch_size=1,
         shuffle=False,
         num_workers=0,
-        convert_to_mel=True,
         target_sample_rate=16_000,
-        n_samples=16_000,
+        n_samples=16_000 * 4,
     )
     for i, (x, y) in enumerate(dm.train_dataloader()):
         print(x.shape, x.mean(), x.std())
