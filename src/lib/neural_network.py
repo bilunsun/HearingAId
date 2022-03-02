@@ -5,67 +5,81 @@ from typing import List
 
 
 class EnvNet(nn.Module):
-<<<<<<< HEAD
-    def __init__(self, width: int, height: int, n_classes: int, in_channels: int = 1):
-=======
-    def __init__(self, n_classes: int):
->>>>>>> 4882b9486d0eec401f17e9ba0af7bedfb86884fc
+
+    def __init__(self, width: int, height: int, n_classes: int, in_channels: int = 1, classifier_hidden_dims: int = 1024):
         super().__init__()
 
         self.n_classes = n_classes
+        self.classifier_hidden_dims = classifier_hidden_dims
 
         self.conv1 = nn.Conv2d(in_channels=1, out_channels=32, kernel_size=(1, 64), stride=(1, 2))
+        self.bn1 = nn.BatchNorm2d(num_features=32)
         self.conv2 = nn.Conv2d(in_channels=32, out_channels=64, kernel_size=(1, 16), stride=(1, 2))
+        self.bn2 = nn.BatchNorm2d(num_features=64)
         self.pool2 = nn.MaxPool2d(kernel_size=(1, 64), stride=(1, 64))
 
         self.conv3 = nn.Conv2d(in_channels=1, out_channels=32, kernel_size=(8, 8), stride=(1, 1))
+        self.bn3 = nn.BatchNorm2d(num_features=32)
         self.conv4 = nn.Conv2d(in_channels=32, out_channels=32, kernel_size=(8, 8), stride=(1, 1))
+        self.bn4 = nn.BatchNorm2d(num_features=32)
         self.pool4 = nn.MaxPool2d(kernel_size=(5, 3), stride=(5, 3))
 
         self.conv5 = nn.Conv2d(in_channels=32, out_channels=64, kernel_size=(1, 4), stride=(1, 1))
+        self.bn5 = nn.BatchNorm2d(num_features=64)
         self.conv6 = nn.Conv2d(in_channels=64, out_channels=64, kernel_size=(1, 4), stride=(1, 1))
-        self.pool6 = nn.MaxPool2d(kernel_size=(1, 2), stride=(1, 2))
+        self.bn6 = nn.BatchNorm2d(num_features=64)
+        self.pool6 = nn.MaxPool2d(kernel_size=(1, 4), stride=(1, 4))
 
-        self.conv7 = nn.Conv2d(in_channels=64, out_channels=128, kernel_size=(1, 4), stride=(1, 1))
-        self.conv8 = nn.Conv2d(in_channels=128, out_channels=128, kernel_size=(1, 4), stride=(1, 1))
-        self.pool8 = nn.MaxPool2d(kernel_size=(1, 2), stride=(1, 2))
+        self.conv7 = nn.Conv2d(in_channels=64, out_channels=128, kernel_size=(1, 2), stride=(1, 1))
+        self.bn7 = nn.BatchNorm2d(num_features=128)
+        self.conv8 = nn.Conv2d(in_channels=128, out_channels=128, kernel_size=(1, 2), stride=(1, 1))
+        self.bn8 = nn.BatchNorm2d(num_features=128)
+        self.pool8 = nn.MaxPool2d(kernel_size=(1, 4), stride=(1, 4))
+
+        self.conv9 = nn.Conv2d(in_channels=128, out_channels=256, kernel_size=(1, 2), stride=(1, 1))
+        self.bn9 = nn.BatchNorm2d(num_features=256)
+        self.conv10 = nn.Conv2d(in_channels=256, out_channels=256, kernel_size=(1, 2), stride=(1, 1))
+        self.bn10 = nn.BatchNorm2d(num_features=256)
+        self.pool10 = nn.MaxPool2d(kernel_size=(1, 2), stride=(1, 2))
 
         x = torch.randn(1, in_channels, height, width)
         x = self.backbone(x)
+        print("Backbone output shape:", x.shape)
         x = x.reshape(x.size(0), -1)
         self.latent_dim = x.size(-1)
-        # self.conv9 = nn.Conv2d(in_channels=128, out_channels=256, kernel_size=(1, 4), stride=(1, 1))
-        # self.conv10 = nn.Conv2d(in_channels=256, out_channels=256, kernel_size=(1, 4), stride=(1, 1))
-        # self.pool10 = nn.MaxPool2d(kernel_size=(1, 2), stride=(1, 2))
 
         self.classifier = nn.Sequential(
-            nn.Linear(self.latent_dim, 1024),
+            nn.Linear(self.latent_dim, self.classifier_hidden_dims),
+            nn.Dropout(p=0.5),
             nn.ReLU(inplace=True),
-            nn.Linear(1024, n_classes),
+            nn.Linear(self.classifier_hidden_dims, self.classifier_hidden_dims),
+            nn.Dropout(p=0.5),
+            nn.ReLU(inplace=True),
+            nn.Linear(self.classifier_hidden_dims, n_classes),
         )
 
     def backbone(self, x):
-        x = F.relu(self.conv1(x))
-        x = F.relu(self.conv2(x))
+        x = F.relu(self.bn1(self.conv1(x)))
+        x = F.relu(self.bn2(self.conv2(x)))
         x = self.pool2(x)
 
         x = x.transpose(1, 2)
 
-        x = F.relu(self.conv3(x))
-        x = F.relu(self.conv4(x))
+        x = F.relu(self.bn3(self.conv3(x)))
+        x = F.relu(self.bn4(self.conv4(x)))
         x = self.pool4(x)
 
-        x = F.relu(self.conv5(x))
-        x = F.relu(self.conv6(x))
+        x = F.relu(self.bn5(self.conv5(x)))
+        x = F.relu(self.bn6(self.conv6(x)))
         x = self.pool6(x)
 
-        x = F.relu(self.conv7(x))
-        x = F.relu(self.conv8(x))
+        x = F.relu(self.bn7(self.conv7(x)))
+        x = F.relu(self.bn8(self.conv8(x)))
         x = self.pool8(x)
 
-        # x = F.relu(self.conv9(x))
-        # x = F.relu(self.conv10(x))
-        # x = self.pool10(x)
+        x = F.relu(self.bn9(self.conv9(x)))
+        x = F.relu(self.bn10(self.conv10(x)))
+        x = self.pool10(x)
 
         return x
 
@@ -169,16 +183,16 @@ def test_custom_cnn():
 
 
 def test_env_net():
-    model = EnvNet(n_classes=10)
+    model = EnvNet(n_classes=10, width=16_000*4, height=1, classifier_hidden_dims=512)
 
     n_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
     print(n_params)
 
-    x = torch.randn(32, 1, 1, 44_100)
+    x = torch.randn(1, 1, 1, 16_000*4)
     out = model(x)
     print(out.shape)
 
 
 if __name__ == "__main__":
-    test_custom_cnn()
-    # test_env_net()
+    # test_custom_cnn()
+    test_env_net()

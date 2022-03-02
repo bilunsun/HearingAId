@@ -5,7 +5,7 @@ import torch
 import torch.nn.functional as F
 import torchaudio
 
-from torch.utils.data import Dataset, DataLoader
+from torch.utils.data import Dataset, DataLoader, random_split
 from typing import List
 
 import random
@@ -247,7 +247,110 @@ class ESC50Dataset(StandardDataset):
         self.CLASS_ID_TO_NAME = dict(set(zip(df["target"], df["category"])))
 
 
+class AudioSetDataset(StandardDataset):
+    N_SECONDS = 4
+
+    def __init__(
+        self,
+        root: str = os.path.join("data", "AudioSet"),
+        pretraining: str = None,
+        target_sample_rate: int = TARGET_SAMPLE_RATE,
+        n_samples: int = N_SAMPLES,
+        folds: List[int] = None,
+        convert_to_mel: bool = False,
+    ) -> None:
+
+        """
+        WARNING: OVERWRITES N_SAMPLES TO BE 5X THE TARGET_SAMPLE_RATE TO USE 5 SECONDS OF AUDIO
+        Also, only use the following classes:
+        classes = [
+            "acoustic_guitar",
+            "alarm_clock",
+            "bell",
+            "bird",
+            "brass_instrument",
+            "car_alarm",
+            "cat",
+            "dog",
+            "doorbell",
+            "drum_kit",
+            "explosion",
+            "helicopter",
+            "honking",
+            "laughter",
+            "plucked_string_instrument",
+            "police_siren",
+            "rapping",
+            "reversing_beeps",
+            "silence",
+            "singing",
+            "speech",
+            "telephone_ring",
+            "train_horn",
+            "water",
+        ]
+        """
+        super().__init__(root, target_sample_rate, int(target_sample_rate * self.N_SECONDS), pretraining, convert_to_mel)
+
+
+        self.root = root
+        # classes = [name for name in os.listdir(self.root) if os.path.isdir(os.path.join(self.root, name))]
+        classes = [
+            "acoustic_guitar",
+            "alarm_clock",
+            "bell",
+            "bird",
+            "brass_instrument",
+            "car_alarm",
+            "cat",
+            "dog",
+            "doorbell",
+            "drum_kit",
+            "explosion",
+            "helicopter",
+            "honking",
+            "laughter",
+            "plucked_string_instrument",
+            "police_siren",
+            "rapping",
+            "reversing_beeps",
+            "silence",
+            "singing",
+            "speech",
+            "telephone_ring",
+            "train_horn",
+            "water",
+        ]
+        self.CLASS_ID_TO_NAME = dict(zip(range(len(classes)), classes))
+
+        self.file_paths = []
+        self.class_ids = []
+
+        for i, c in enumerate(classes):
+            class_files = [os.path.join(self.root, c, f) for f in os.listdir(os.path.join(self.root, c))]
+            self.file_paths.extend(class_files)
+            self.class_ids.extend([i] * len(class_files))
+
+        self.class_ids = torch.LongTensor(self.class_ids)
+        self.n_folds = None
+
+    # Overwrite split_folds for AudioSet
+    @classmethod
+    def split_folds(cls, dataset: Dataset, n_validation_folds: int = 1):
+        train_len = int(len(dataset) * 0.9)
+        val_len = len(dataset) - train_len
+        train_set, val_set = random_split(dataset, [train_len, val_len])
+
+        return train_set, val_set, None, None
+
+
 class AudioDataModule(pl.LightningDataModule):
+    NAME_TO_DATASET_CLASS = {
+        "urbansound8k": UrbanSound8KDataset,
+        "esc50": ESC50Dataset,
+        "audioset": AudioSetDataset
+    }
+
     def __init__(
         self,
         dataset_name: str,
@@ -270,14 +373,8 @@ class AudioDataModule(pl.LightningDataModule):
         self.convert_to_mel = convert_to_mel
         self.extra_kwargs = {"prefetch_factor": 4, "persistent_workers": True} if self.num_workers > 0 else {}
 
-        dataset_class = UrbanSound8KDataset if dataset_name == "urbansound8k" else ESC50Dataset
-        dataset = dataset_class(
-            pretraining=pretraining,
-            folds=folds,
-            convert_to_mel=convert_to_mel,
-            target_sample_rate=target_sample_rate,
-            n_samples=n_samples,
-        )
+        dataset_class = self.NAME_TO_DATASET_CLASS[dataset_name]
+        dataset = dataset_class(pretraining=pretraining, folds=folds, target_sample_rate=target_sample_rate, n_samples=n_samples)
         print(f"There are {len(dataset)} samples in the {dataset_name} dataset.")
         signal, _ = dataset[1]
 
