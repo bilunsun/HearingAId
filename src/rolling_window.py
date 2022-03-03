@@ -1,4 +1,5 @@
 import pyaudio
+import sys
 import time
 import torch
 import torch.nn.functional as F
@@ -15,38 +16,21 @@ WINDOW_TIME_S = 4
 
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-model = Model.load_from_checkpoint("checkpoints/fearless-spaceship-160.ckpt")
+model = Model.load_from_checkpoint("checkpoints/effortless-monkey-169.ckpt")
 model = model.to(device)
 model.scaler.to(device)
 model = model.eval()
 
 
 classes = [
-    "acoustic_guitar",
-    "alarm_clock",
-    "bell",
-    "bird",
-    "brass_instrument",
-    "car_alarm",
-    "cat",
-    "dog",
     "doorbell",
-    "drum_kit",
-    "explosion",
-    "helicopter",
     "honking",
-    "laughter",
-    "plucked_string_instrument",
-    "police_siren",
-    "rapping",
-    "reversing_beeps",
+    "knocking",
     "silence",
-    "singing",
-    "speech",
-    "telephone_ring",
-    "train_horn",
-    "water",
+    "siren",
+    "talking",
 ]
+max_str_len = max(len(c) for c in classes)
 
 
 def yield_data(dq: deque, lock: Lock, exit_signal: Event):
@@ -62,8 +46,14 @@ def yield_data(dq: deque, lock: Lock, exit_signal: Event):
     p.terminate()
 
 
+past_classifications = deque(maxlen=100)
+previous_classification = None
 @torch.no_grad()
 def classify(x: deque):
+    global past_classifications
+    global previous_classification
+    global console
+
     x = torch.frombuffer(b"".join(x), dtype=torch.int16)
 
     x = x.reshape(1, 1, 1, -1).float().to(device)
@@ -73,7 +63,23 @@ def classify(x: deque):
     x = F.softmax(x, dim=1)
 
     max_index = torch.argmax(x, dim=1).item()
-    print(classes[max_index])
+
+    # Simple filtering
+    past_classifications.append(max_index)
+    filtered_max = max(set(past_classifications), key=past_classifications.count)
+    if filtered_max != previous_classification:
+        previous_classification = filtered_max
+
+    repr_str = ""
+    for c, prob in zip(classes, x.flatten()):
+        prob_len = int(prob.item() * 100)
+        remaining_len = 100 - prob_len
+        prob_bar = "#" * prob_len + "-" * remaining_len
+        repr_str += f"{c: <{max_str_len}}: [{prob_bar}]\n"
+    repr_str += "\n\n"
+    print(repr_str, end="\r")
+    sys.stdout.flush()
+    time.sleep(0.1)
 
 
 # Putting as globals to kill on exit
@@ -101,6 +107,10 @@ def main():
 if __name__ == "__main__":
     try:
         main()
-    except:
+    except Exception as e:
+        exit_signal.set()
+        data_thread.join()
+        raise e
+    except KeyboardInterrupt:
         exit_signal.set()
         data_thread.join()

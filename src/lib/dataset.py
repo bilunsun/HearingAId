@@ -103,7 +103,7 @@ class StandardDataset(Dataset):
         return x
 
     def _regular_getitem(self, index: int, scale_augment: bool = True, gain_augment: bool = True):
-        x, sample_rate = torchaudio.load(self.file_paths[index], normalize=False)  # TODO: normalize=False
+        x, sample_rate = torchaudio.load(self.file_paths[index], normalize=False)
 
         # Reshape
         if len(x.shape) == 1:
@@ -364,6 +364,7 @@ class CustomDataset(StandardDataset):
         classes = sorted(list(set([f.split("_")[0] for f in os.listdir(self.root)])))
 
         self.CLASS_ID_TO_NAME = dict(zip(range(len(classes)), classes))
+        print(self.CLASS_ID_TO_NAME)
 
         self.class_ids = [classes.index(f.split("_")[0]) for f in os.listdir(self.root)]
 
