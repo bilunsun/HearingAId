@@ -4,6 +4,7 @@ import torch
 import torch.nn.functional as F
 from collections import deque
 from threading import Event, Lock, Thread
+import platform
 
 from train import Model
 from user_output import send_class
@@ -17,13 +18,15 @@ WINDOW_TIME_S = 4
 CLASSIFY_RATE = 5  # classification rate in Hz
 CLASSIFY_PERIOD = 1 / CLASSIFY_RATE
 CLASSIFY_HIST_TIME = 2  # seconds of classifications to hold on to
-
+SEND_DEBOUNCE = 60  # only send again if 1 minute has passed
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 model = Model.load_from_checkpoint("checkpoints/fearless-spaceship-160.ckpt")
 model = model.to(device)
 model.scaler.to(device)
 model = model.eval()
+
+PLATFORM = platform.system()
 
 
 classes = [
@@ -77,6 +80,9 @@ def send_classifications():
     Applies a low-pass filter to the classes detected, and sends the classification
     """
     prev_sent = 'silence'
+    prev_sent_time = time.time()
+
+    MIN_DETECT_COUNT = CLASSIFY_RATE
 
     while not exit_signal.is_set():
         # dumb low pass filter
@@ -97,10 +103,19 @@ def send_classifications():
                 max_count = freqs[c]
                 max_class = c
 
-        if max_class != 'silence':
+        if max_count > MIN_DETECT_COUNT and \
+           max_class != 'silence' and \
+           max_class != prev_sent and \
+           time.time() - prev_sent_time > SEND_DEBOUNCE:  # noqa: E125
             # send result
-            # send_class(class_to_byte[max_class])
-            print(max_class)
+            if PLATFORM == 'Linux':
+                send_class(class_to_byte[max_class])
+            else:
+                # print that we did a send for Windows systems
+                print(f'I2C Send -> Class: {max_class}, Int: {class_to_byte[max_class]}')
+
+            # send class once
+            prev_sent = max_class
 
         time.sleep(1)
 
