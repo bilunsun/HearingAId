@@ -22,11 +22,7 @@ CLASSIFY_HIST_TIME = 2  # seconds of classifications to hold on to
 SEND_DEBOUNCE = 60  # only send again if 1 minute has passed
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-<<<<<<< HEAD
-model = Model.load_from_checkpoint("checkpoints/super-dream-174.ckpt")
-=======
 model = Model.load_from_checkpoint("checkpoints/fearless-spaceship-160.ckpt")
->>>>>>> ec7fa7f9648ffe2a5f098770bea2b7a5004c50af
 model = model.to(device)
 model.scaler.to(device)
 model = model.eval()
