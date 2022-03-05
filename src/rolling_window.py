@@ -172,6 +172,7 @@ def main():
 if __name__ == "__main__":
     try:
         main()
-    except:
+    except Exception as e:
         exit_signal.set()
         data_thread.join()
+        print(e)
