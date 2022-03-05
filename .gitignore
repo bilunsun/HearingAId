@@ -3,6 +3,7 @@ data/
 wandb/
 TEST-*/
 checkpoints/
+downloaded_checkpoints/
 
 # Custom - device
 soundassist
