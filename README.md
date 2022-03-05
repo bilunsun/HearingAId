@@ -11,6 +11,11 @@ To install PyAudio, run:
 pip install pipwin
 pipwin install pyaudio
 ```
+On Linux, to install PyAudio:
+```
+sudo apt-get install portaudio19-dev
+pip install pyaudio
+```
 
 ## Raspberry Pi 4 Setup
 
@@ -18,13 +23,17 @@ Primary challenge encountered is the installation of Pytorch and Torch Audio.
 
 ### PyTorch Build
 
+Note: if installing from the wheel, you will need to install OpenBLAS with `sudo apt-get install libopenblas-dev`
+
 To install Pytorch, I built it from the pytorch repo, because the architecture of the Pi 4 is `aarch64`, and there are no available wheels for this architecture from pip.
 
 To install PyTorch from scratch, you will need a minimum of 5.5 GB of RAM (swap + real memory) with the settings below. If parts of the build fail, try reducing the number of jobs to 1 or 2. Ensure that you are also running a version of Python that will be compatible with the other packages - 3.8 is the latest recommended version. 3.9 and 3.10 may have compatibility issues with certain packages that we will use. The suggested method for handling multiple Python versions is to use `pyenv`. To install `pyenv`, use:
 
 ```
 sudo apt-get update && sudo apt-get upgrade
-sudo apt-get install pyenv
+
+# Install pyenv
+curl https://pyenv.run | bash
 
 # install stuff for the recommended build environment (debian)
 sudo apt-get update; sudo apt-get install make build-essential libssl-dev zlib1g-dev \
