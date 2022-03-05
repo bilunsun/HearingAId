@@ -5,7 +5,6 @@ import torch.nn.functional as F
 from collections import deque
 from threading import Event, Lock, Thread
 import platform
-import argparse
 
 from train import Model
 from user_output import send_class
@@ -151,7 +150,7 @@ detect_q = deque(["silence" for x in range(detect_q_len)], maxlen=detect_q_len) 
 send_thread = Thread(target=send_classifications)
 
 
-def main(args):
+def main():
     data_thread.start()
     send_thread.start()
 
@@ -171,14 +170,9 @@ def main(args):
 
 
 if __name__ == "__main__":
-
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--num_runs', type=int, default=1000)
-
-    args = parser.parse_args()
-
     try:
         main()
-    except:
+    except Exception as e:
         exit_signal.set()
         data_thread.join()
+        print(e)
