@@ -34,10 +34,11 @@ classes = [
     "doorbell",
     "honking",
     "knocking",
-    "silence",
+    # "silence",
     "siren",
-    "talking",
+    # "talking",
 ]
+# assert len(classes) == model.hparams.n_classes
 max_str_len = max(len(c) for c in classes)
 
 class_to_byte = {}
