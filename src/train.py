@@ -51,6 +51,12 @@ class Model(pl.LightningModule):
             if self.model.classifier[-1].out_features != self.hparams.n_classes:
                 self.model.classifier[-1] = nn.Linear(self.model.classifier[-1].in_features, self.hparams.n_classes)
 
+            for p in self.model.parameters():
+                p.requires_grad_(False)
+
+            for p in self.model.classifier:
+                p.requires_grad_(True)
+
         elif self.hparams.mix_ckpt is not None:
             ckpt = PretrainMix.load_from_checkpoint(self.hparams.mix_ckpt, width=self.hparams.width, height=self.hparams.height)
             self.scaler = ckpt.scaler
@@ -212,9 +218,9 @@ if __name__ == "__main__":
 
     parser.add_argument("--dataset_name", type=str, default="urbansound8k")
     parser.add_argument("--target_sample_rate", type=int, default=16_000)
-    parser.add_argument("--n_samples", type=int, default=24_000)
+    parser.add_argument("--n_samples", type=int, default=64_000)
     parser.add_argument("--convert_to_mel", action="store_true")
-    parser.add_argument("--batch_size", type=int, default=128)
+    parser.add_argument("--batch_size", type=int, default=32)
     parser.add_argument("--shuffle", type=bool, default=True)
     parser.add_argument("--num_workers", type=int, default=4)
     parser.add_argument("--data_dir", type=str, default="data")

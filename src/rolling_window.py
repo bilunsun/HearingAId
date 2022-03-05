@@ -1,4 +1,5 @@
 import pyaudio
+import sys
 import time
 import torch
 import torch.nn.functional as F
@@ -30,31 +31,14 @@ PLATFORM = platform.system()
 
 
 classes = [
-    "acoustic_guitar",
-    "alarm_clock",
-    "bell",
-    "bird",
-    "brass_instrument",
-    "car_alarm",
-    "cat",
-    "dog",
     "doorbell",
-    "drum_kit",
-    "explosion",
-    "helicopter",
     "honking",
-    "laughter",
-    "plucked_string_instrument",
-    "police_siren",
-    "rapping",
-    "reversing_beeps",
+    "knocking",
     "silence",
-    "singing",
-    "speech",
-    "telephone_ring",
-    "train_horn",
-    "water",
+    "siren",
+    "talking",
 ]
+max_str_len = max(len(c) for c in classes)
 
 class_to_byte = {}
 
@@ -122,17 +106,29 @@ def send_classifications():
 
 @torch.no_grad()
 def classify(x: deque):
+    global console
+
     x = torch.frombuffer(b"".join(x), dtype=torch.int16)
 
     x = x.reshape(1, 1, 1, -1).float().to(device)
+    x /= 2**15
     x = model.scaler.transform(x)
     x = model(x)
     x = F.softmax(x, dim=1)
 
     max_index = torch.argmax(x, dim=1).item()
-    # print(classes[max_index], x)
-    with detect_q_lock:
-        detect_q.append(classes[max_index])
+    detect_q.append(x[max_index])
+
+    repr_str = ""
+    for c, prob in zip(classes, x.flatten()):
+        prob_len = int(prob.item() * 100)
+        remaining_len = 100 - prob_len
+        prob_bar = "#" * prob_len + "-" * remaining_len
+        repr_str += f"{c: <{max_str_len}}: [{prob_bar}]\n"
+    repr_str += "\n\n"
+    print(repr_str, end="\r")
+    sys.stdout.flush()
+    time.sleep(0.1)
 
 
 # Putting as globals to kill on exit
@@ -144,7 +140,6 @@ exit_signal = Event()
 data_thread = Thread(target=yield_data, args=(dq, lock, exit_signal,))
 
 # Queue to store detection results
-detect_q_lock = Lock()
 detect_q_len = CLASSIFY_RATE * CLASSIFY_HIST_TIME
 detect_q = deque(["silence" for x in range(detect_q_len)], maxlen=detect_q_len)  # stuff full of silence
 send_thread = Thread(target=send_classifications)
@@ -172,7 +167,11 @@ def main():
 if __name__ == "__main__":
     try:
         main()
+    except KeyboardInterrupt:
+        exit_signal.set()
+        data_thread.join()
     except Exception as e:
+        # other error
         exit_signal.set()
         data_thread.join()
         print(e)
