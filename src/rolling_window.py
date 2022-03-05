@@ -73,7 +73,7 @@ def classify(x: deque):
     x = F.softmax(x, dim=1)
 
     max_index = torch.argmax(x, dim=1).item()
-    # print(classes[max_index], x)
+    print(classes[max_index])
 
 
 # Putting as globals to kill on exit
@@ -88,23 +88,14 @@ data_thread = Thread(target=yield_data, args=(dq, lock, exit_signal,))
 def main(args):
     data_thread.start()
 
-    infer_times = []
-
-    for i in range(args.num_runs):
+    while True:
         raw_data = list(dq)  # The 'lock' object does not seem to be necessary for reading
 
         if len(raw_data) < buffer_len:
             time.sleep(WINDOW_TIME_S)
             continue
 
-        start = time.time()
         classify(raw_data)
-        end = time.time()
-
-        infer_times.append(end-start)
-
-    avg_infer = sum(infer_times[1::]) / (len(infer_times) - 1)
-    print(f'Average Inference Time: {avg_infer * 1000:.3f} ms')
 
 
 if __name__ == "__main__":
@@ -115,7 +106,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     try:
-        main(args)
+        main()
     except:
         exit_signal.set()
         data_thread.join()

@@ -373,14 +373,8 @@ class AudioDataModule(pl.LightningDataModule):
         self.convert_to_mel = convert_to_mel
         self.extra_kwargs = {"prefetch_factor": 4, "persistent_workers": True} if self.num_workers > 0 else {}
 
-        dataset_class = UrbanSound8KDataset if dataset_name == "urbansound8k" else ESC50Dataset
-        dataset = dataset_class(
-            pretraining=pretraining,
-            folds=folds,
-            convert_to_mel=convert_to_mel,
-            target_sample_rate=target_sample_rate,
-            n_samples=n_samples,
-        )
+        dataset_class = self.NAME_TO_DATASET_CLASS[dataset_name]
+        dataset = dataset_class(pretraining=pretraining, folds=folds, target_sample_rate=target_sample_rate, n_samples=n_samples)
         print(f"There are {len(dataset)} samples in the {dataset_name} dataset.")
         signal, _ = dataset[1]
 
