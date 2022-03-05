@@ -1,3 +1,4 @@
+from lib.printProgressBar import printProgressBar
 from train import Model
 from lib import dataset
 
@@ -8,7 +9,6 @@ import argparse
 import random
 import time
 import statistics
-import shutil
 
 
 def main(args: argparse.ArgumentParser):
@@ -42,28 +42,12 @@ def main(args: argparse.ArgumentParser):
 
         infer_times.append(elapsed_time)
 
-        printProgressBar(it+1, args.times)
+        printProgressBar(it + 1, args.times)
 
     print(f'Ran {args.times} samples.' +
           f'\n\tAverage: {statistics.mean(infer_times)}' +
           f'\n\tStandard Deviation: {statistics.stdev(infer_times)}' +
           f'\n\tMax: {max(infer_times)}')
-
-
-def printProgressBar(iteration, total, prefix='', suffix='', fill='█',
-                     barfill=' ', printEnd="\r"):
-    w, h = shutil.get_terminal_size()
-    length = w - 9 - len(str(total)) * 2
-
-    percent = f'{int(100 * (iteration / total)) : >3}'
-    filledLength = int(length * iteration // total)
-
-    bar = fill * filledLength + barfill * (length - filledLength)
-
-    print(f'\r{percent}%|{bar}| {iteration}/{total}', end=printEnd)
-
-    if iteration == total:
-        print()
 
 
 if __name__ == '__main__':

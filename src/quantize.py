@@ -3,7 +3,7 @@ import torch
 
 from train import Model
 
-model = Model.load_from_checkpoint("checkpoints/balmy-donkey-71.ckpt").model
+model = Model.load_from_checkpoint("checkpoints/autumn-wind-80.ckpt").model
 
 # import pdb; pdb.set_trace()
 # Raspberry Pi 4 workaround for the following error:
