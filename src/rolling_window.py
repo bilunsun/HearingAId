@@ -10,13 +10,15 @@ import platform
 from train import Model
 from user_output import send_class
 
+from lib.get_latest_checkpoint import get_latest_checkpoint
+
 
 CHANNELS = 1
 CHUNK = 1_600
 SAMPLE_RATE = 16_000
 WINDOW_TIME_S = 4
 
-CLASSIFY_RATE = 5  # classification rate in Hz
+CLASSIFY_RATE = 100  # classification rate in Hz
 CLASSIFY_PERIOD = 1 / CLASSIFY_RATE
 CLASSIFY_HIST_TIME = 2  # seconds of classifications to hold on to
 SEND_DEBOUNCE = 60  # only send again if 1 minute has passed
@@ -117,7 +119,7 @@ def classify(x: deque):
     x = F.softmax(x, dim=1)
 
     max_index = torch.argmax(x, dim=1).item()
-    detect_q.append(x[max_index])
+    detect_q.append(x[0][max_index])
 
     repr_str = ""
     for c, prob in zip(classes, x.flatten()):
