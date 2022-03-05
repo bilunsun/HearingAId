@@ -16,7 +16,7 @@ WINDOW_TIME_S = 4
 
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-model = Model.load_from_checkpoint("checkpoints/effortless-monkey-169.ckpt")
+model = Model.load_from_checkpoint("checkpoints/super-dream-174.ckpt")
 model = model.to(device)
 model.scaler.to(device)
 model = model.eval()
@@ -26,10 +26,11 @@ classes = [
     "doorbell",
     "honking",
     "knocking",
-    "silence",
+    # "silence",
     "siren",
-    "talking",
+    # "talking",
 ]
+# assert len(classes) == model.hparams.n_classes
 max_str_len = max(len(c) for c in classes)
 
 
