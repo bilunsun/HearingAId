@@ -2,6 +2,7 @@ import argparse
 import pytorch_lightning as pl
 import torch
 import torch.nn.functional as F
+import uuid
 import wandb
 from pytorch_lightning.callbacks import ModelCheckpoint
 from pytorch_lightning.loggers import WandbLogger
@@ -44,12 +45,25 @@ class Model(pl.LightningModule):
         self.scaler = MelScaler(size=()) if self.hparams.convert_to_mel else StandardScaler(size=())
 
         if self.hparams.transfer_ckpt is not None:
+            print("Transferring from", self.hparams.transfer_ckpt)
+
             ckpt = Model.load_from_checkpoint(self.hparams.transfer_ckpt, transfer_ckpt=None)
+
+            # Set to none; otherwise when loading the current model,
+            # the original transfer_ckpt will be needed
+            self.hparams.transfer_ckpt = None
+
             self.scaler = ckpt.scaler
             self.model = ckpt.model
 
             if self.model.classifier[-1].out_features != self.hparams.n_classes:
                 self.model.classifier[-1] = nn.Linear(self.model.classifier[-1].in_features, self.hparams.n_classes)
+
+            for p in self.model.parameters():
+                p.requires_grad_(False)
+
+            for p in self.model.classifier:
+                p.requires_grad_(True)
 
         elif self.hparams.mix_ckpt is not None:
             ckpt = PretrainMix.load_from_checkpoint(self.hparams.mix_ckpt, width=self.hparams.width, height=self.hparams.height)
@@ -140,6 +154,7 @@ class Model(pl.LightningModule):
         print("std.shape", self.scaler.std.shape, "std", self.scaler.std)
 
         self.class_names = self.trainer.datamodule.class_names
+        self.run_name = self.logger.experiment.name if self.logger else str(uuid.uuid1()).split('-')[0]
 
         self.logger.log_hyperparams(
             {
@@ -162,6 +177,14 @@ class Model(pl.LightningModule):
         # Reset
         self._y = []
         self._y_hat = []
+
+    def on_save_checkpoint(self, checkpoint):
+        checkpoint["class_names"] = self.class_names
+        checkpoint["run_name"] = self.run_name
+
+    def on_load_checkpoint(self, checkpoint):
+        self.class_names = checkpoint.get("class_names")
+        self.run_name = checkpoint.get("run_name")
 
 
 def main(args):
@@ -212,9 +235,9 @@ if __name__ == "__main__":
 
     parser.add_argument("--dataset_name", type=str, default="urbansound8k")
     parser.add_argument("--target_sample_rate", type=int, default=16_000)
-    parser.add_argument("--n_samples", type=int, default=24_000)
+    parser.add_argument("--n_samples", type=int, default=64_000)
     parser.add_argument("--convert_to_mel", action="store_true")
-    parser.add_argument("--batch_size", type=int, default=128)
+    parser.add_argument("--batch_size", type=int, default=32)
     parser.add_argument("--shuffle", type=bool, default=True)
     parser.add_argument("--num_workers", type=int, default=4)
     parser.add_argument("--data_dir", type=str, default="data")
