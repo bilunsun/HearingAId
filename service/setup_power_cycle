@@ -9,3 +9,4 @@ sudo cp usb_hub_power_cycle.service /lib/systemd/system/usb_hub_power_cycle.serv
 sudo chmod 755 /lib/systemd/system/usb_hub_power_cycle.service
 
 sudo systemctl daemon-reload
+sudo systemctl enable usb_hub_power_cycle.service
