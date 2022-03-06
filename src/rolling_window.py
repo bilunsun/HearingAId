@@ -9,7 +9,7 @@ import platform
 
 from train import Model
 from user_output import send_class
-
+from lib.checkpoint_server import checkpoint_server
 from lib.get_latest_checkpoint import get_latest_checkpoint
 
 
@@ -24,7 +24,15 @@ CLASSIFY_HIST_TIME = 2  # seconds of classifications to hold on to
 SEND_DEBOUNCE = 60  # only send again if 1 minute has passed
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-model = Model.load_from_checkpoint("checkpoints/fearless-spaceship-160.ckpt")
+
+checkpoint = get_latest_checkpoint('checkpoints')
+if checkpoint is not None:
+    print(f"Using checkpoint: {checkpoint}")
+else:
+    print("Checkpoint not found!")
+    sys.exit(-1)
+
+model = Model.load_from_checkpoint(checkpoint)
 model = model.to(device)
 model.scaler.to(device)
 model = model.eval()
@@ -94,11 +102,15 @@ def send_classifications():
            max_class != prev_sent and \
            time.time() - prev_sent_time > SEND_DEBOUNCE:  # noqa: E125
             # send result
-            if PLATFORM == 'Linux':
-                send_class(class_to_byte[max_class])
+            class_byte = class_to_byte.get(max_class, default=None)
+            if class_byte is None:
+                print(f'Could not convert "{max_class}" to a byte')
             else:
-                # print that we did a send for Windows systems
-                print(f'I2C Send -> Class: {max_class}, Int: {class_to_byte[max_class]}')
+                if PLATFORM == 'Linux':
+                    send_class(class_byte)
+                else:
+                    # print that we did a send for Windows systems
+                    print(f'I2C Send -> Class: {max_class}, Int: {class_byte}')
 
             # send class once
             prev_sent = max_class
@@ -130,7 +142,7 @@ def classify(x: deque):
     repr_str += "\n\n"
     print(repr_str, end="\r")
     sys.stdout.flush()
-    time.sleep(0.1)
+    # time.sleep(0.1)
 
 
 # Putting as globals to kill on exit
@@ -146,10 +158,14 @@ detect_q_len = CLASSIFY_RATE * CLASSIFY_HIST_TIME
 detect_q = deque(["silence" for x in range(detect_q_len)], maxlen=detect_q_len)  # stuff full of silence
 send_thread = Thread(target=send_classifications)
 
+# Mechanism for new checkpoints
+new_checkpoint_signal = Event()
+checkpoint_server_thread = Thread(target=checkpoint_server, args=(exit_signal, new_checkpoint_signal, ))
 
 def main():
     data_thread.start()
     send_thread.start()
+    checkpoint_server_thread.start()
 
     last_classification = time.time()
     while True:
@@ -172,8 +188,10 @@ if __name__ == "__main__":
     except KeyboardInterrupt:
         exit_signal.set()
         data_thread.join()
+        checkpoint_server_thread.join()
     except Exception as e:
         # other error
         exit_signal.set()
         data_thread.join()
+        checkpoint_server_thread.join()
         print(e)
