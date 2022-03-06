@@ -1,4 +1,4 @@
 #!/bin/bash
 
 arecord -l
-./usb_hub_power_cycle.service
+/usr/local/bin/usb_hub_power_cycle
