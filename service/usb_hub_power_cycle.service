@@ -1,8 +1,0 @@
-[Unit]
-After=ssh.service
-Description="Power cycles the Realtek USB hub."
-[Service]
-ExecStart=/usr/local/bin/usb_hub_power_cycle.sh
-User=root
-[Install]
-WantedBy=multi-user.target
