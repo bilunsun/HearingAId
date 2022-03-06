@@ -169,6 +169,12 @@ class Model(pl.LightningModule):
         self._y = []
         self._y_hat = []
 
+    def on_save_checkpoint(self, checkpoint):
+        checkpoint["class_names"] = self.class_names
+
+    def on_load_checkpoint(self, checkpoint):
+        self.class_names = checkpoint.get("class_names")
+
 
 def main(args):
     configs = vars(args)

@@ -357,7 +357,6 @@ class CustomDataset(StandardDataset):
     ) -> None:
         super().__init__(root, target_sample_rate, n_samples, pretraining, convert_to_mel)
 
-
         self.root = root
 
         self.file_paths = [os.path.join(self.root, f) for f in os.listdir(self.root)]
