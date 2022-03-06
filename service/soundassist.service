@@ -1,0 +1,8 @@
+[Unit]
+After=network.target
+Description="SoundAssist Service"
+[Service]
+ExecStart=/bin/sh -c "python3"
+User=soundassist
+[Install]
+WantedBy=multi-user.target
