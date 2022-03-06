@@ -103,17 +103,15 @@ def send_classifications():
 
 @torch.no_grad()
 def classify(x: deque):
-    global console
-
     x = torch.frombuffer(b"".join(x), dtype=torch.int16)
 
     x = x.reshape(1, 1, 1, -1).float().to(device)
     x /= 2**15
     x = model.scaler.transform(x)
-    x = model(x)
-    x = F.softmax(x, dim=1)
+    x = model(x).squeeze(0)
+    x = F.softmax(x, dim=0)
 
-    max_index = torch.argmax(x, dim=1).item()
+    max_index = torch.argmax(x, dim=0).item()
     detect_q.append(x[max_index])
 
     repr_str = ""
