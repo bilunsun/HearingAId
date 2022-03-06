@@ -216,3 +216,15 @@ CUDA should be automatically detected and used, however, you can force it with:
 ```
 export USE_CUDA=1
 ```
+
+
+# Jetson Nano WiFi Setup
+
+Commands to set up a wifi access point on the Jetson Nano:
+```
+nmcli con add type wifi ifname wlan0 mode ap con-name WIFI_AP ssid <ACCESS_POINT_NAME>
+nmcli con modify WIFI_AP 802-11-wireless.band bg
+nmcli con modify WIFI_AP ipv4.method shared
+nmcli con modify WIFI_AP ipv4.addr 192.168.5.1/24
+nmcli con up WIFI_AP
+```
