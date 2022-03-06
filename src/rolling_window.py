@@ -27,6 +27,10 @@ model = model.to(device)
 model.scaler.to(device)
 model = model.eval()
 
+print("=============================")
+print("RUN NAME", model.run_name)
+print("=============================")
+
 PLATFORM = platform.system()
 
 classes = sorted(list(model.class_names.values()))  # Should already be sorted, but just in case

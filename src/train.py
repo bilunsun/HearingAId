@@ -2,6 +2,7 @@ import argparse
 import pytorch_lightning as pl
 import torch
 import torch.nn.functional as F
+import uuid
 import wandb
 from pytorch_lightning.callbacks import ModelCheckpoint
 from pytorch_lightning.loggers import WandbLogger
@@ -153,6 +154,7 @@ class Model(pl.LightningModule):
         print("std.shape", self.scaler.std.shape, "std", self.scaler.std)
 
         self.class_names = self.trainer.datamodule.class_names
+        self.run_name = self.logger.experiment.name if self.logger else str(uuid.uuid1()).split('-')[0]
 
         self.logger.log_hyperparams(
             {
@@ -178,9 +180,11 @@ class Model(pl.LightningModule):
 
     def on_save_checkpoint(self, checkpoint):
         checkpoint["class_names"] = self.class_names
+        checkpoint["run_name"] = self.run_name
 
     def on_load_checkpoint(self, checkpoint):
         self.class_names = checkpoint.get("class_names")
+        self.run_name = checkpoint.get("run_name")
 
 
 def main(args):
