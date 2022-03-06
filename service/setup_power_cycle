@@ -5,7 +5,7 @@ gcc -o usb_hub_power_cycle realtek_hub_power_cycle.c -lusb-1.0
 sudo mv usb_hub_power_cycle /usr/local/bin/
 sudo chmod +x /usr/local/bin/usb_hub_power_cycle
 
-sudo cp usb_hub_power_cycle.service /lib/systemd/usb_hub_power_cycle.service
-sudo chmod 755 /lib/systemd/usb_hub_power_cycle.service
+sudo cp usb_hub_power_cycle.service /lib/systemd/system/usb_hub_power_cycle.service
+sudo chmod 755 /lib/systemd/system/usb_hub_power_cycle.service
 
 sudo systemctl daemon-reload
