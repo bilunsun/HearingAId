@@ -180,7 +180,10 @@ def main():
 
     last_classification_time = time.time()
     while True:
-        raw_data = list(audio_data_buffer)  # The 'lock' object does not seem to be necessary for reading
+        raw_data = list(audio_data_buffer)  # Creates a copy of deque as a list
+                                            # Without the lock, the state of the list may not be valid
+                                            # main thread can be preempted during a read and this list modified,
+                                            # This might even cause an error if Python is smart enough (i.e. tracks modifications to collections during iteration)
 
         if len(raw_data) < buffer_len:
             time.sleep(WINDOW_TIME_S)
