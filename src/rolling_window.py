@@ -21,7 +21,7 @@ CLASSIFY_PERIOD = 1 / CLASSIFY_RATE
 CLASSIFY_HIST_TIME = 2              # seconds of classifications to hold on to
 SEND_DEBOUNCE = 20                  # only send again if 20 seconds have passed
 
-PROBABILITY_CUTOFF = 0.3            # don't consider a classification as valid unless it's above this
+PROBABILITY_CUTOFF = 0.4            # don't consider a classification as valid unless it's above this
 
 PRINT_DEBUG = False
 
