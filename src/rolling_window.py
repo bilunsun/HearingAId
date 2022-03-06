@@ -86,7 +86,7 @@ def filter_list_of_detections( detect_q ):
 
         all_detections = list(detect_q)
         freqs = {}
-        # print(all_detections[-1], flush=True)
+        print(all_detections[-1], flush=True)
 
         for detection_class in all_detections:
             if detection_class in freqs:
@@ -101,7 +101,7 @@ def filter_list_of_detections( detect_q ):
                 max_count = freqs[detection_class]
                 most_detected_class = detection_class
 
-        if max_count > MIN_DETECT_COUNT and most_detected_class != "": # buffer is initially filled with ""
+        if max_count > MIN_DETECT_COUNT and most_detected_class != "nothing": # buffer is initially filled with "nothing"s
             # send result
             return most_detected_class
 
@@ -131,7 +131,7 @@ def classify(x: deque):
     if max_prob > PROBABILITY_CUTOFF:
         detect_q.append(classes[max_index])
     else:
-        detect_q.append("")
+        detect_q.append("nothing")
 
     filtered_class = filter_list_of_detections( detect_q )
     if ( filtered_class != prev_filtered_class or \
@@ -167,7 +167,7 @@ data_thread = Thread(target=yield_data, args=(audio_data_buffer, lock, exit_sign
 
 # Queue to store detection results
 detect_q_len = CLASSIFY_RATE * CLASSIFY_HIST_TIME
-detect_q = deque(["" for x in range(detect_q_len)], maxlen=detect_q_len)  # stuff full of empty string
+detect_q = deque(["nothing" for x in range(detect_q_len)], maxlen=detect_q_len)  # stuff full of empty string
 detection_ready = Event() # global event for signalling send_thread
 send_thread = Thread(target=send_classifications)
 
