@@ -44,7 +44,14 @@ class Model(pl.LightningModule):
         self.scaler = MelScaler(size=()) if self.hparams.convert_to_mel else StandardScaler(size=())
 
         if self.hparams.transfer_ckpt is not None:
+            print("Transferring from", self.hparams.transfer_ckpt)
+
             ckpt = Model.load_from_checkpoint(self.hparams.transfer_ckpt, transfer_ckpt=None)
+
+            # Set to none; otherwise when loading the current model,
+            # the original transfer_ckpt will be needed
+            self.hparams.transfer_ckpt = None
+
             self.scaler = ckpt.scaler
             self.model = ckpt.model
 

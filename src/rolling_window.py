@@ -22,7 +22,7 @@ CLASSIFY_HIST_TIME = 2  # seconds of classifications to hold on to
 SEND_DEBOUNCE = 60  # only send again if 1 minute has passed
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-model = Model.load_from_checkpoint("checkpoints/glorious-puddle-192.ckpt")
+model = Model.load_from_checkpoint("model.ckpt")
 model = model.to(device)
 model.scaler.to(device)
 model = model.eval()
