@@ -21,6 +21,8 @@ CLASSIFY_PERIOD = 1 / CLASSIFY_RATE
 CLASSIFY_HIST_TIME = 2  # seconds of classifications to hold on to
 SEND_DEBOUNCE = 60  # only send again if 1 minute has passed
 
+PRINT_DEBUG = False
+
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 model = Model.load_from_checkpoint("model.ckpt")
 model = model.to(device)
@@ -70,6 +72,7 @@ def send_classifications():
         # look at the past history. If class persists for more than 1 second and is the most frequent
         detected = list(detect_q)
         freqs = {}
+        print(detected[0])
 
         for c in detected:
             if c in freqs:
@@ -112,18 +115,19 @@ def classify(x: deque):
     x = F.softmax(x, dim=0)
 
     max_index = torch.argmax(x, dim=0).item()
-    detect_q.append(x[max_index])
+    detect_q.append(classes[max_index])
 
-    repr_str = ""
-    for c, prob in zip(classes, x.flatten()):
-        prob_len = int(prob.item() * 100)
-        remaining_len = 100 - prob_len
-        prob_bar = "#" * prob_len + "-" * remaining_len
-        repr_str += f"{c: <{max_str_len}}: [{prob_bar}]\n"
-    repr_str += "\n\n"
-    print(repr_str, end="\r")
-    sys.stdout.flush()
-    time.sleep(0.1)
+    if PRINT_DEBUG:
+        repr_str = ""
+        for c, prob in zip(classes, x.flatten()):
+            prob_len = int(prob.item() * 100)
+            remaining_len = 100 - prob_len
+            prob_bar = "#" * prob_len + "-" * remaining_len
+            repr_str += f"{c: <{max_str_len}}: [{prob_bar}]\n"
+        repr_str += "\n\n"
+        print(repr_str, end="\r")
+        sys.stdout.flush()
+        time.sleep(0.1)
 
 
 # Putting as globals to kill on exit
