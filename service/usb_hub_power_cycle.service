@@ -1,0 +1,7 @@
+[Unit]
+After=network.target
+Description="Power cycles the Realtek USB hub."
+[Service]
+ExecStart=/usr/local/bin/usb_hub_power_cycle
+[Install]
+WantedBy=multi-user.target
