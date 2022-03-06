@@ -1,7 +1,7 @@
-#!/bin/sh
+#!/bin/bash
 
 sudo addgroup --system soundassist
-sudo adduser --system --no-create-home --disabled-password --ingroup soundassist soundassist
+sudo adduser --system --ingroup soundassist soundassist
 sudo adduser soundassist video
 
 su - soundassist

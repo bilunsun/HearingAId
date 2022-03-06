@@ -2,7 +2,7 @@
 After=network.target
 Description="SoundAssist Service"
 [Service]
-ExecStart=/bin/sh -c "python3"
+ExecStart=/bin/sh -c "cd /soundassist & source venv/bin/activate & python src/rolling_window.py"
 User=soundassist
 [Install]
 WantedBy=multi-user.target
