@@ -1,5 +1,5 @@
 [Unit]
-After=network.target
+Type=idle
 Description="Power cycles the Realtek USB hub."
 [Service]
 ExecStart=/usr/local/bin/usb_hub_power_cycle
