@@ -45,67 +45,77 @@ for i, c in enumerate(classes):
     class_to_byte[c] = i
 
 
-def yield_data(dq: deque, lock: Lock, exit_signal: Event):
+def yield_data(audio_data_buffer: deque, lock: Lock, exit_signal: Event):
     p = pyaudio.PyAudio()
     stream = p.open(format=pyaudio.paInt16, channels=CHANNELS, rate=SAMPLE_RATE, input=True, frames_per_buffer=CHUNK)
 
     while not exit_signal.is_set():
         with lock:
-            dq.append(stream.read(CHUNK))
+            audio_data_buffer.append(stream.read(CHUNK))
 
     stream.stop_stream()
     stream.close()
     p.terminate()
 
+classification_to_send = ''
 
 def send_classifications():
-    """
-    Applies a low-pass filter to the classes detected, and sends the classification
-    """
-    prev_sent = 'silence'
-    prev_sent_time = time.time()
+    global classification_to_send
 
-    MIN_DETECT_COUNT = CLASSIFY_RATE
+    while ( 1 ):
+        detection_ready.wait()
 
-    while not exit_signal.is_set():
-        # dumb low pass filter
-        # look at the past history. If class persists for more than 1 second and is the most frequent
-        detected = list(detect_q)
+        if ( exit_signal.is_set() ):
+            break
+        
+        class_byte = class_to_byte[classification_to_send]
+
+        if PLATFORM == 'Linux':
+            send_class(class_byte)
+        else:
+            # print that we did a send for Windows systems
+            print(f'I2C Send -> Class: {classification_to_send}, Int: {class_byte}')
+
+        detection_ready.clear()
+
+
+def filter_list_of_detections( detect_q ):
+        MIN_DETECT_COUNT = CLASSIFY_RATE
+
+        all_detections = list(detect_q)
         freqs = {}
-        print(detected[0])
+        print(all_detections[-1])
 
-        for c in detected:
-            if c in freqs:
-                freqs[c] += 1
+        for detection_class in all_detections:
+            if detection_class in freqs:
+                freqs[detection_class] += 1
             else:
-                freqs[c] = 1
+                freqs[detection_class] = 1
 
         max_count = 0
-        max_class = None
-        for c in freqs:
-            if max_count < freqs[c]:
-                max_count = freqs[c]
-                max_class = c
+        most_detected_class = None
+        for detection_class in freqs:
+            if max_count < freqs[detection_class]:
+                max_count = freqs[detection_class]
+                most_detected_class = detection_class
 
-        if max_count > MIN_DETECT_COUNT and \
-           max_class != 'silence' and \
-           max_class != prev_sent and \
-           time.time() - prev_sent_time > SEND_DEBOUNCE:  # noqa: E125
+        if max_count > MIN_DETECT_COUNT:
             # send result
-            if PLATFORM == 'Linux':
-                send_class(class_to_byte[max_class])
-            else:
-                # print that we did a send for Windows systems
-                print(f'I2C Send -> Class: {max_class}, Int: {class_to_byte[max_class]}')
+            return most_detected_class
 
-            # send class once
-            prev_sent = max_class
+        else:
+            return None
 
-        time.sleep(1)
 
+prev_filtered_class = 'silence'
+prev_sent_time = 0
 
 @torch.no_grad()
 def classify(x: deque):
+    global prev_filtered_class
+    global classification_to_send
+    global prev_sent_time
+
     x = torch.frombuffer(b"".join(x), dtype=torch.int16)
 
     x = x.reshape(1, 1, 1, -1).float().to(device)
@@ -115,7 +125,20 @@ def classify(x: deque):
     x = F.softmax(x, dim=0)
 
     max_index = torch.argmax(x, dim=0).item()
+
+    # Maybe only append classes[max_index] if that classification is of sufficient confidence
+
     detect_q.append(classes[max_index])
+
+    filtered_class = filter_list_of_detections( detect_q )
+    if filtered_class != prev_filtered_class and \
+    time.time() - prev_sent_time > SEND_DEBOUNCE and \
+    filtered_class != None:
+        prev_filtered_class = filtered_class
+        prev_sent_time = time.time()
+
+        classification_to_send = filtered_class
+        detection_ready.set()
 
     if PRINT_DEBUG:
         repr_str = ""
@@ -129,28 +152,33 @@ def classify(x: deque):
         sys.stdout.flush()
         time.sleep(0.1)
 
+    
+
 
 # Putting as globals to kill on exit
 # Gross.
 lock = Lock()
 buffer_len = int(SAMPLE_RATE / CHUNK * WINDOW_TIME_S)
-dq = deque(maxlen=buffer_len)
+audio_data_buffer = deque(maxlen=buffer_len)
 exit_signal = Event()
-data_thread = Thread(target=yield_data, args=(dq, lock, exit_signal,))
+data_thread = Thread(target=yield_data, args=(audio_data_buffer, lock, exit_signal,))
 
 # Queue to store detection results
 detect_q_len = CLASSIFY_RATE * CLASSIFY_HIST_TIME
 detect_q = deque(["silence" for x in range(detect_q_len)], maxlen=detect_q_len)  # stuff full of silence
+detection_ready = Event() # global event for signalling send_thread
 send_thread = Thread(target=send_classifications)
 
 
 def main():
+    detection_ready.clear()
+
     data_thread.start()
     send_thread.start()
 
     last_classification = time.time()
     while True:
-        raw_data = list(dq)  # The 'lock' object does not seem to be necessary for reading
+        raw_data = list(audio_data_buffer)  # The 'lock' object does not seem to be necessary for reading
 
         if len(raw_data) < buffer_len:
             time.sleep(WINDOW_TIME_S)
@@ -168,9 +196,15 @@ if __name__ == "__main__":
         main()
     except KeyboardInterrupt:
         exit_signal.set()
+        detection_ready.set()
+
+        send_thread.join()
         data_thread.join()
     except Exception as e:
         # other error
         exit_signal.set()
+        detection_ready.set()
+
+        send_thread.join()
         data_thread.join()
         print(e)

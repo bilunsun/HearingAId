@@ -1,7 +1,7 @@
 import time
 import argparse
 
-from rolling_window import data_thread, classify, buffer_len, dq, WINDOW_TIME_S, exit_signal
+from rolling_window import data_thread, classify, buffer_len, audio_data_buffer, WINDOW_TIME_S, exit_signal
 
 
 def main(args):
@@ -10,7 +10,7 @@ def main(args):
     infer_times = []
 
     for i in range(args.num_runs):
-        raw_data = list(dq)  # The 'lock' object does not seem to be necessary for reading
+        raw_data = list(audio_data_buffer)  # The 'lock' object does not seem to be necessary for reading
 
         if len(raw_data) < buffer_len:
             time.sleep(WINDOW_TIME_S)
