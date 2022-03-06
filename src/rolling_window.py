@@ -16,10 +16,12 @@ CHUNK = 1_600
 SAMPLE_RATE = 16_000
 WINDOW_TIME_S = 4
 
-CLASSIFY_RATE = 5  # classification rate in Hz
+CLASSIFY_RATE = 5                   # classification rate in Hz
 CLASSIFY_PERIOD = 1 / CLASSIFY_RATE
-CLASSIFY_HIST_TIME = 2  # seconds of classifications to hold on to
-SEND_DEBOUNCE = 60  # only send again if 1 minute has passed
+CLASSIFY_HIST_TIME = 2              # seconds of classifications to hold on to
+SEND_DEBOUNCE = 20                  # only send again if 20 seconds have passed
+
+PROBABILITY_CUTOFF = 0.3            # don't consider a classification as valid unless it's above this
 
 PRINT_DEBUG = False
 
@@ -74,7 +76,7 @@ def send_classifications():
             send_class(class_byte)
         else:
             # print that we did a send for Windows systems
-            print(f'I2C Send -> Class: {classification_to_send}, Int: {class_byte}')
+            print(f'I2C Send -> Class: {classification_to_send}, Int: {class_byte}', flush=True)
 
         detection_ready.clear()
 
@@ -84,7 +86,7 @@ def filter_list_of_detections( detect_q ):
 
         all_detections = list(detect_q)
         freqs = {}
-        print(all_detections[-1])
+        # print(all_detections[-1], flush=True)
 
         for detection_class in all_detections:
             if detection_class in freqs:
@@ -99,7 +101,7 @@ def filter_list_of_detections( detect_q ):
                 max_count = freqs[detection_class]
                 most_detected_class = detection_class
 
-        if max_count > MIN_DETECT_COUNT:
+        if max_count > MIN_DETECT_COUNT and most_detected_class != "": # buffer is initially filled with ""
             # send result
             return most_detected_class
 
@@ -107,7 +109,7 @@ def filter_list_of_detections( detect_q ):
             return None
 
 
-prev_filtered_class = 'silence'
+prev_filtered_class = ''
 prev_sent_time = 0
 
 @torch.no_grad()
@@ -124,15 +126,16 @@ def classify(x: deque):
     x = model(x).squeeze(0)
     x = F.softmax(x, dim=0)
 
-    max_index = torch.argmax(x, dim=0).item()
+    max_prob, max_index = torch.max(x, dim=0)
 
-    # Maybe only append classes[max_index] if that classification is of sufficient confidence
-
-    detect_q.append(classes[max_index])
+    if max_prob > PROBABILITY_CUTOFF:
+        detect_q.append(classes[max_index])
+    else:
+        detect_q.append("")
 
     filtered_class = filter_list_of_detections( detect_q )
-    if filtered_class != prev_filtered_class and \
-    time.time() - prev_sent_time > SEND_DEBOUNCE and \
+    if ( filtered_class != prev_filtered_class or \
+    time.time() - prev_sent_time > SEND_DEBOUNCE ) and \
     filtered_class != None:
         prev_filtered_class = filtered_class
         prev_sent_time = time.time()
@@ -152,7 +155,6 @@ def classify(x: deque):
         sys.stdout.flush()
         time.sleep(0.1)
 
-    
 
 
 # Putting as globals to kill on exit
@@ -165,7 +167,7 @@ data_thread = Thread(target=yield_data, args=(audio_data_buffer, lock, exit_sign
 
 # Queue to store detection results
 detect_q_len = CLASSIFY_RATE * CLASSIFY_HIST_TIME
-detect_q = deque(["silence" for x in range(detect_q_len)], maxlen=detect_q_len)  # stuff full of silence
+detect_q = deque(["" for x in range(detect_q_len)], maxlen=detect_q_len)  # stuff full of empty string
 detection_ready = Event() # global event for signalling send_thread
 send_thread = Thread(target=send_classifications)
 
@@ -176,7 +178,7 @@ def main():
     data_thread.start()
     send_thread.start()
 
-    last_classification = time.time()
+    last_classification_time = time.time()
     while True:
         raw_data = list(audio_data_buffer)  # The 'lock' object does not seem to be necessary for reading
 
@@ -184,9 +186,9 @@ def main():
             time.sleep(WINDOW_TIME_S)
             continue
 
-        if time.time() - last_classification >= CLASSIFY_PERIOD:
+        if time.time() - last_classification_time >= CLASSIFY_PERIOD:
             classify(raw_data)
-            last_classification = time.time()
+            last_classification_time = time.time()
         else:
             pass
 
