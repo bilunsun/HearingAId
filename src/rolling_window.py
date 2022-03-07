@@ -14,14 +14,15 @@ from user_output import send_class
 CHANNELS = 1
 CHUNK = 1_600
 SAMPLE_RATE = 16_000
-WINDOW_TIME_S = 4
+WINDOW_TIME_S = 2
 
-CLASSIFY_RATE = 5                   # classification rate in Hz
+CLASSIFY_RATE = 7                   # classification rate in Hz
 CLASSIFY_PERIOD = 1 / CLASSIFY_RATE
-CLASSIFY_HIST_TIME = 2              # seconds of classifications to hold on to
-SEND_DEBOUNCE = 20                  # only send again if 20 seconds have passed
+CLASSIFY_HIST_TIME = 1              # seconds of classifications to hold on to
+MIN_DETECT_COUNT = 5
+SEND_DEBOUNCE = 5                  # only send again if 20 seconds have passed
 
-PROBABILITY_CUTOFF = 0.4            # don't consider a classification as valid unless it's above this
+PROBABILITY_CUTOFF = 0.9            # don't consider a classification as valid unless it's above this
 
 PRINT_DEBUG = False
 
@@ -82,7 +83,6 @@ def send_classifications():
 
 
 def filter_list_of_detections( detect_q ):
-        MIN_DETECT_COUNT = CLASSIFY_RATE
 
         all_detections = list(detect_q)
         freqs = {}
