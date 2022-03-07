@@ -77,9 +77,9 @@ class EnvNet(nn.Module):
         x = F.relu(self.bn8(self.conv8(x)))
         x = self.pool8(x)
 
-        x = F.relu(self.bn9(self.conv9(x)))
-        x = F.relu(self.bn10(self.conv10(x)))
-        x = self.pool10(x)
+        # x = F.relu(self.bn9(self.conv9(x)))
+        # x = F.relu(self.bn10(self.conv10(x)))
+        # x = self.pool10(x)
 
         return x
 

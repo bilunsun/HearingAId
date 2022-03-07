@@ -3,15 +3,24 @@ import pytorch_lightning as pl
 import torch
 import torch.nn.functional as F
 import uuid
-import wandb
 from pytorch_lightning.callbacks import ModelCheckpoint
 from pytorch_lightning.loggers import WandbLogger
 from torch import nn
 from tqdm.auto import tqdm
 
 from lib import AudioDataModule, EnvNet, StandardScaler, MelScaler
-from pretrain_mix import PretrainMix
 from pretrain_simsiam import PretrainSimSiam
+
+
+class LogSoftmaxKLDivLoss(nn.Module):
+    def __init__(self, dim=1, reduction="batchmean"):
+        super().__init__()
+
+        self.dim = dim
+        self.kldiv = nn.KLDivLoss(reduction=reduction)
+
+    def forward(self, x, y):
+        return self.kldiv(F.log_softmax(x, dim=self.dim), y)
 
 
 class Model(pl.LightningModule):
@@ -66,15 +75,18 @@ class Model(pl.LightningModule):
                 p.requires_grad_(True)
 
         elif self.hparams.mix_ckpt is not None:
-            ckpt = PretrainMix.load_from_checkpoint(self.hparams.mix_ckpt, width=self.hparams.width, height=self.hparams.height)
+            ckpt = Model.load_from_checkpoint(self.hparams.mix_ckpt, width=self.hparams.width, height=self.hparams.height)
             self.scaler = ckpt.scaler
-            self.model = ckpt.backbone
+            self.model = ckpt.model
 
-            self.model.classifier = nn.Sequential(
-                nn.Linear(self.model.classifier[-1].in_features, self.hparams.classifier_hidden_dims),
-                nn.ReLU(inplace=True),
-                nn.Linear(self.hparams.classifier_hidden_dims, self.hparams.n_classes)
-            )
+            if self.model.classifier[-1].out_features != self.hparams.n_classes:
+                self.model.classifier[-1] = nn.Linear(self.model.classifier[-1].in_features, self.hparams.n_classes)
+
+            for p in self.model.parameters():
+                p.requires_grad_(False)
+
+            for p in self.model.classifier:
+                p.requires_grad_(True)
 
         elif self.hparams.simsiam_ckpt is not None:
             ckpt = PretrainSimSiam.load_from_checkpoint(self.hparams.simsiam_ckpt, strict=False)
@@ -99,6 +111,12 @@ class Model(pl.LightningModule):
 
         self.optimizer = torch.optim.Adam(self.model.parameters(), lr=self.hparams.lr)
 
+        # Loss for regular vs pretraining
+        if kwargs.get("pretraining"):
+            self.criterion = LogSoftmaxKLDivLoss()
+        else:
+            self.criterion = nn.CrossEntropyLoss()
+
         # For confusion matrix
         self._y_hat = []
         self._y = []
@@ -111,15 +129,16 @@ class Model(pl.LightningModule):
         x = self.scaler.transform(x)
 
         pred = self(x)
-        loss = F.cross_entropy(pred, y)
-
-        y_hat = torch.argmax(pred, dim=1)
-        accuracy = (y == y_hat).float().mean()
+        loss = self.criterion(pred, y)
 
         self.log("train_loss", loss, prog_bar=True, logger=True)
         self.log("train_mean", x.mean(), prog_bar=True, logger=True)
         self.log("train_std", x.std(), prog_bar=True, logger=True)
-        self.log("train_accuracy", accuracy, prog_bar=True, logger=True)
+
+        if not isinstance(self.criterion, LogSoftmaxKLDivLoss):
+            y_hat = torch.argmax(pred, dim=1)
+            accuracy = torch.eq(y, y_hat).float().mean()
+            self.log("train_accuracy", accuracy, prog_bar=True, logger=True)
 
         return loss
 
@@ -128,13 +147,16 @@ class Model(pl.LightningModule):
         x = self.scaler.transform(x)
 
         pred = self(x)
-        loss = F.cross_entropy(pred, y)
+        loss = self.criterion(pred, y)
         self.log("val_loss", loss, prog_bar=True, logger=True)
+        self.log("val_mean", x.mean(), prog_bar=True, logger=True)
+        self.log("val_std", x.std(), prog_bar=True, logger=True)
 
-        y_hat = torch.argmax(pred, dim=1)
+        if not isinstance(self.criterion, LogSoftmaxKLDivLoss):
+            y_hat = torch.argmax(pred, dim=1)
 
-        self._y_hat.append(y_hat)
-        self._y.append(y)
+            self._y_hat.append(y_hat)
+            self._y.append(y)
 
     def configure_optimizers(self):
         return self.optimizer
@@ -143,7 +165,7 @@ class Model(pl.LightningModule):
         if not (self.hparams.mix_ckpt or self.hparams.simsiam_ckpt):
             all_x = []
             for i, (x, _) in enumerate(tqdm(self.trainer.datamodule.train_dataloader())):
-                if i == 10:
+                if i == 20:
                     break
                 all_x.append(x)
             all_x = torch.cat(all_x)
@@ -168,10 +190,13 @@ class Model(pl.LightningModule):
         """
         Used to log the mean accuracy over the entire validation set
         """
-        y = torch.cat(self._y).cpu().numpy()
-        y_hat = torch.cat(self._y_hat).cpu().numpy()
+        if isinstance(self.criterion, LogSoftmaxKLDivLoss):
+            return
 
-        accuracy = (y == y_hat).mean()  # Need to cast Long tensor to Float
+        y = torch.cat(self._y)
+        y_hat = torch.cat(self._y_hat)
+
+        accuracy = torch.eq(y, y_hat).float().mean()  # Need to cast Long tensor to Float
         self.log("val_accuracy", accuracy, prog_bar=True, logger=True)
 
         # Reset
@@ -194,6 +219,10 @@ def main(args):
     seed = pl.seed_everything(configs["seed"])
     configs["seed"] = seed
 
+    # Pretrain
+    if args.pretraining:
+        configs["pretraining"] = args.pretraining
+
     audio_datamodule = AudioDataModule(**configs)
     configs["width"] = audio_datamodule.width
     configs["height"] = audio_datamodule.height
@@ -209,9 +238,9 @@ def main(args):
     checkpoint_callback = ModelCheckpoint(
         dirpath=configs["checkpoints_dir"],
         filename=logger.experiment.name,
-        save_top_k=1,
-        monitor="val_accuracy",
-        mode="max",
+        save_top_k=5,
+        monitor="val_loss" if args.pretraining else "val_accuracy",
+        mode="min" if args.pretraining else "max",
         every_n_epochs=1,
         verbose=True,
     )
@@ -245,6 +274,7 @@ if __name__ == "__main__":
     parser.add_argument("--max_epochs", type=int, default=5_000)
     parser.add_argument("--project", type=str, default="TEST-hearingAId")
     parser.add_argument("--check_val_every_n_epoch", type=int, default=1)
+    parser.add_argument("--pretraining", type=str, choices=["mix", "simsiam"], default=None)
     parser.add_argument("--seed", type=int, default=None)
 
     parser = Model.add_model_specific_args(parser)

@@ -90,6 +90,18 @@ class StandardDataset(Dataset):
     def __getitem__(self, index):
         return self.getitem_method(index)
 
+    def _reshape(self, x):
+        # Reshape
+        if len(x.shape) == 1:
+            x = x.unsqueeze(1)
+        elif x.size(1) == 1 or x.size(1) == 2:
+            x = x.T
+
+        # Add extra dim and convert to float
+        x = x.unsqueeze(0).float()
+
+        return x
+
     def _scale(self, x):
         """Slow down or speed up"""
         scale_factor = random.uniform(0.8, 1.25)
@@ -105,14 +117,7 @@ class StandardDataset(Dataset):
     def _regular_getitem(self, index: int, scale_augment: bool = True, gain_augment: bool = True):
         x, sample_rate = torchaudio.load(self.file_paths[index], normalize=False)
 
-        # Reshape
-        if len(x.shape) == 1:
-            x = x.unsqueeze(1)
-        elif x.size(1) == 1 or x.size(1) == 2:
-            x = x.T
-
-        # Add extra dim and convert to float
-        x = x.unsqueeze(0).float()
+        x = self._reshape(x)
 
         # Pre-augment
         if scale_augment:
@@ -248,8 +253,6 @@ class ESC50Dataset(StandardDataset):
 
 
 class AudioSetDataset(StandardDataset):
-    N_SECONDS = 4
-
     def __init__(
         self,
         root: str = os.path.join("data", "AudioSet"),
@@ -290,37 +293,36 @@ class AudioSetDataset(StandardDataset):
             "water",
         ]
         """
-        super().__init__(root, target_sample_rate, int(target_sample_rate * self.N_SECONDS), pretraining, convert_to_mel)
-
+        super().__init__(root, target_sample_rate, n_samples, pretraining, convert_to_mel)
 
         self.root = root
-        # classes = [name for name in os.listdir(self.root) if os.path.isdir(os.path.join(self.root, name))]
-        classes = [
-            "acoustic_guitar",
-            "alarm_clock",
-            "bell",
-            "bird",
-            "brass_instrument",
-            "car_alarm",
-            "cat",
-            "dog",
-            "doorbell",
-            "drum_kit",
-            "explosion",
-            "helicopter",
-            "honking",
-            "laughter",
-            "plucked_string_instrument",
-            "police_siren",
-            "rapping",
-            "reversing_beeps",
-            "silence",
-            "singing",
-            "speech",
-            "telephone_ring",
-            "train_horn",
-            "water",
-        ]
+        classes = [name for name in os.listdir(self.root) if os.path.isdir(os.path.join(self.root, name))]
+        # classes = [
+        #     "acoustic_guitar",
+        #     "alarm_clock",
+        #     "bell",
+        #     "bird",
+        #     "brass_instrument",
+        #     "car_alarm",
+        #     "cat",
+        #     "dog",
+        #     "doorbell",
+        #     "drum_kit",
+        #     "explosion",
+        #     "helicopter",
+        #     "honking",
+        #     "laughter",
+        #     "plucked_string_instrument",
+        #     "police_siren",
+        #     "rapping",
+        #     "reversing_beeps",
+        #     "silence",
+        #     "singing",
+        #     "speech",
+        #     "telephone_ring",
+        #     "train_horn",
+        #     "water",
+        # ]
         self.CLASS_ID_TO_NAME = dict(zip(range(len(classes)), classes))
 
         self.file_paths = []
@@ -345,6 +347,7 @@ class AudioSetDataset(StandardDataset):
 
 
 class CustomDataset(StandardDataset):
+    NOISE_PATH = os.path.join("data", "noise")
 
     def __init__(
         self,
@@ -369,6 +372,32 @@ class CustomDataset(StandardDataset):
 
         self.class_ids = torch.LongTensor(self.class_ids)
         self.n_folds = None
+
+        # Noise
+        self.noise_paths = [os.path.join(self.NOISE_PATH, f) for f in os.listdir(self.NOISE_PATH)]
+
+    # Overwrite to use background noise
+    def __getitem__(self, index: int, scale_augment: bool = True, gain_augment: bool = True):
+        x, sample_rate = torchaudio.load(self.file_paths[index], normalize=False)
+        noise, _ = torchaudio.load(random.choice(self.noise_paths), normalize=False)
+
+        x = self._reshape(x)
+        noise = self._reshape(noise)
+
+        # Pre-augment
+        if scale_augment:
+            x = self._scale(x)
+
+        x = preprocess(x, sample_rate, self.target_sample_rate, self.n_samples, self.convert_to_mel)
+        noise = preprocess(noise, sample_rate, self.target_sample_rate, self.n_samples, self.convert_to_mel)
+        x = torch.mean(x + noise * 10, dim=0, keepdim=True)
+
+        # Post-augment
+        if gain_augment:
+            x = self._gain(x)
+
+        y = self.class_ids[index]
+        return x, y
 
     # Overwrite split_folds for AudioSet
     @classmethod

@@ -7,28 +7,31 @@ from tqdm.auto import tqdm
 from lib import AudioDataModule
 from train import Model
 
-datamodule = AudioDataModule("custom", batch_size=32, shuffle=False, num_workers=0, target_sample_rate=16_000, n_samples=64_000)
+datamodule = AudioDataModule("custom", batch_size=32, shuffle=False, num_workers=0, target_sample_rate=16_000, n_samples=32_000)
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-model = Model.load_from_checkpoint("checkpoints/good-butterfly-178.ckpt")
+model = Model.load_from_checkpoint("checkpoints/rosy-breeze-250-v1.ckpt")
 model = model.to(device)
 model.scaler.to(device)
 model = model.eval()
 
-classes = [datamodule.train_dataset.dataset.CLASS_ID_TO_NAME[i] for i in range(len(datamodule.train_dataset.dataset.CLASS_ID_TO_NAME))]
-# assert len(classes) == model.hparams.n_classes
+classes = sorted(list(model.class_names.values()))  # Should already be sorted, but just in case
+# classes = [datamodule.train_dataset.dataset.CLASS_ID_TO_NAME[i] for i in range(len(datamodule.train_dataset.dataset.CLASS_ID_TO_NAME))]
+assert len(classes) == model.hparams.n_classes
 
 @torch.no_grad()
 def get_embeddings_and_labels():
     embeddings = []
     labels = []
-    for x, y in tqdm(datamodule.train_dataloader()):
+    for i, (x, y) in enumerate(tqdm(datamodule.train_dataloader())):
+        if i == 10:
+            break
         x = x.to(device)
         x = model.scaler.transform(x)
         pred = model.model.backbone(x)
         pred = pred.reshape(pred.size(0), -1)
-        # pred = model.model.classifier[:-2](pred)
-        # pred = model(x)
+        pred = model.model.classifier[:-2](pred)
+        pred = model(x)
         embeddings.append(pred)
         labels.append(y)
 

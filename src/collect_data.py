@@ -23,6 +23,8 @@ def main(args):
     p = pyaudio.PyAudio()
     stream = p.open(format=FORMAT, channels=CHANNELS, rate=args.sample_rate, input=True, frames_per_buffer=args.chunk)
 
+    input("Start")
+
     # Collect data
     for _ in range(args.n_files):
         if args.manual:
@@ -57,7 +59,7 @@ if __name__ == "__main__":
     parser.add_argument("--n_files", type=int, default=5)
     parser.add_argument("--chunk", type=int, default=1_600)
     parser.add_argument("--sample_rate", type=int, default=16_000)
-    parser.add_argument("--window_time_s", type=float, default=4)
+    parser.add_argument("--window_time_s", type=float, default=2)
     parser.add_argument("--output_dir", type=str, default=os.path.join("data", "collected_data"))
 
     args = parser.parse_args()
