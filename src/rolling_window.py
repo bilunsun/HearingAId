@@ -22,7 +22,7 @@ CLASSIFY_HIST_TIME = 1              # seconds of classifications to hold on to
 MIN_DETECT_COUNT = 5
 SEND_DEBOUNCE = 5                  # only send again if 20 seconds have passed
 
-PROBABILITY_CUTOFF = 0.8            # don't consider a classification as valid unless it's above this
+PROBABILITY_CUTOFF = [0.7, 0.9, 0.9]            # don't consider a classification as valid unless it's above this
 
 PRINT_DEBUG = False
 
@@ -128,7 +128,7 @@ def classify(x: deque):
 
     max_prob, max_index = torch.max(x, dim=0)
 
-    if max_prob > PROBABILITY_CUTOFF:
+    if max_prob > PROBABILITY_CUTOFF[max_index]:
         detect_q.append(classes[max_index])
     else:
         detect_q.append("nothing")
